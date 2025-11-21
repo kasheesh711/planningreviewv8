@@ -88,12 +88,14 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const requestRef = useRef();
-    
+
     const [hideOrphans, setHideOrphans] = useState(false);
     const [metricMode, setMetricMode] = useState('Type');
     const [spacing, setSpacing] = useState(50);
     const [typeFilters, setTypeFilters] = useState({ RM: true, FG: true, DC: true });
     const [orgFilter, setOrgFilter] = useState([]);
+    const [focusNodeId, setFocusNodeId] = useState(null);
+    const [localSelectedId, setLocalSelectedId] = useState(null);
 
     // Physics State (Ref to avoid re-renders)
     const simState = useRef({
@@ -107,7 +109,9 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         width: 0,
         height: 0,
         alpha: 1, // Simulation Heat
-        lastSpacing: 50
+        lastSpacing: 50,
+        mouseDown: null,
+        hasMoved: false
     });
 
     // 1. Prepare Graph Data
@@ -212,16 +216,62 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
             type: l.type
         })).filter(l => l.source && l.target);
 
-        if (hideOrphans) {
+        if (hideOrphans && !focusNodeId) {
             const activeIds = new Set();
             newLinks.forEach(l => { activeIds.add(l.source.id); activeIds.add(l.target.id); });
             newNodes = newNodes.filter(n => activeIds.has(n.id));
         }
 
+        if (focusNodeId) {
+            const availableIds = new Set(newNodes.map(n => n.id));
+            if (!availableIds.has(focusNodeId)) {
+                setFocusNodeId(null);
+                setLocalSelectedId(null);
+            } else {
+                const forwardAdj = new Map();
+                const backwardAdj = new Map();
+
+                newLinks.forEach(l => {
+                    if (!forwardAdj.has(l.source.id)) forwardAdj.set(l.source.id, []);
+                    if (!backwardAdj.has(l.target.id)) backwardAdj.set(l.target.id, []);
+                    forwardAdj.get(l.source.id).push(l.target.id);
+                    backwardAdj.get(l.target.id).push(l.source.id);
+                });
+
+                const allowed = new Set([focusNodeId]);
+                const forwardQueue = [focusNodeId];
+                while (forwardQueue.length) {
+                    const current = forwardQueue.shift();
+                    const targets = forwardAdj.get(current) || [];
+                    targets.forEach(t => {
+                        if (!allowed.has(t)) {
+                            allowed.add(t);
+                            forwardQueue.push(t);
+                        }
+                    });
+                }
+
+                const backwardQueue = [focusNodeId];
+                while (backwardQueue.length) {
+                    const current = backwardQueue.shift();
+                    const sources = backwardAdj.get(current) || [];
+                    sources.forEach(s => {
+                        if (!allowed.has(s)) {
+                            allowed.add(s);
+                            backwardQueue.push(s);
+                        }
+                    });
+                }
+
+                newNodes = newNodes.filter(n => allowed.has(n.id));
+                newLinks = newLinks.filter(l => allowed.has(l.source.id) && allowed.has(l.target.id));
+            }
+        }
+
         simState.current.nodes = newNodes;
         simState.current.links = newLinks;
         simState.current.alpha = 1; // Re-heat simulation
-    }, [graphData, hideOrphans, typeFilters, orgFilter]);
+    }, [graphData, hideOrphans, typeFilters, orgFilter, focusNodeId]);
 
     // 3. Auto-Focus Selection
     useEffect(() => {
@@ -372,7 +422,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
 
             // Draw Links
             ctx.lineWidth = 1 / transform.k;
-            const selectedIdStr = selectedNode ? `${selectedNode.itemCode}|${selectedNode.invOrg}` : null;
+            const selectedIdStr = localSelectedId ?? (selectedNode ? `${selectedNode.itemCode}|${selectedNode.invOrg}` : null);
             
             links.forEach(link => {
                 const isConnected = selectedIdStr && (link.source.id === selectedIdStr || link.target.id === selectedIdStr);
@@ -477,7 +527,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
 
         requestRef.current = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(requestRef.current);
-    }, [hideOrphans, metricMode, isDarkMode, selectedNode, spacing]);
+    }, [hideOrphans, metricMode, isDarkMode, selectedNode, spacing, localSelectedId]);
 
     // --- Resize Observer ---
     useEffect(() => {
@@ -504,25 +554,53 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         };
     };
 
+    const findNodeAt = (wx, wy) => {
+        const { nodes } = simState.current;
+        return nodes.find(n => {
+            const radius = (4 + Math.log(n.degree + 1) * 2) * 1.5;
+            return Math.abs(n.x - wx) <= radius && Math.abs(n.y - wy) <= radius;
+        });
+    };
+
+    const handleNodeSelect = (node) => {
+        if (node) {
+            setLocalSelectedId(node.id);
+            setFocusNodeId(node.id);
+            simState.current.alpha = 0.6;
+        } else {
+            setLocalSelectedId(null);
+            setFocusNodeId(null);
+        }
+    };
+
+    const handleGraphClick = (e) => {
+        const { x, y } = getMousePos(e);
+        const { transform } = simState.current;
+        const wx = (x - transform.x) / transform.k;
+        const wy = (y - transform.y) / transform.k;
+        const clickedNode = findNodeAt(wx, wy);
+        handleNodeSelect(clickedNode || null);
+    };
+
     const handleMouseDown = (e) => {
         const { x, y } = getMousePos(e);
-        const { transform, nodes } = simState.current;
-        
+        const { transform } = simState.current;
+
+        simState.current.mouseDown = { x, y };
+        simState.current.hasMoved = false;
+
         // World Coords
         const wx = (x - transform.x) / transform.k;
         const wy = (y - transform.y) / transform.k;
 
         // Hit Test
-        const clicked = nodes.find(n => {
-            const r = 10; // Hit radius
-            return Math.abs(n.x - wx) < r && Math.abs(n.y - wy) < r;
-        });
+        const clicked = findNodeAt(wx, wy);
 
         if (clicked) {
             simState.current.dragNode = clicked;
             simState.current.isDragging = true;
             simState.current.alpha = 1;
-            // We don't necessarily select it here to avoid conflict with parent selection, 
+            // We don't necessarily select it here to avoid conflict with parent selection,
             // but we could invoke a callback if we wanted click-to-select
         } else {
             simState.current.isDragging = true;
@@ -533,6 +611,12 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
     const handleMouseMove = (e) => {
         const { x, y } = getMousePos(e);
         const { transform, isDragging, dragNode, lastPan } = simState.current;
+
+        if (simState.current.mouseDown && !simState.current.hasMoved) {
+            const dx = x - simState.current.mouseDown.x;
+            const dy = y - simState.current.mouseDown.y;
+            if (Math.hypot(dx, dy) > 3) simState.current.hasMoved = true;
+        }
 
         if (dragNode) {
             dragNode.x = (x - transform.x) / transform.k;
@@ -546,10 +630,18 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e) => {
+        const isMouseUpEvent = e?.type === 'mouseup';
+        const shouldHandleClick = simState.current.mouseDown && !simState.current.hasMoved && isMouseUpEvent;
         simState.current.isDragging = false;
         simState.current.dragNode = null;
         simState.current.lastPan = null;
+        simState.current.mouseDown = null;
+        simState.current.hasMoved = false;
+
+        if (shouldHandleClick) {
+            handleGraphClick(e);
+        }
     };
 
     const handleWheel = (e) => {
@@ -579,6 +671,18 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         const values = Array.from(e.target.selectedOptions).map(o => o.value);
         setOrgFilter(values);
         simState.current.alpha = 0.6;
+    };
+
+    const handleResetView = () => {
+        setHideOrphans(false);
+        setMetricMode('Type');
+        setSpacing(50);
+        setTypeFilters({ RM: true, FG: true, DC: true });
+        setOrgFilter([]);
+        setFocusNodeId(null);
+        setLocalSelectedId(null);
+        simState.current.transform = { x: 0, y: 0, k: 0.75 };
+        simState.current.alpha = 0.8;
     };
 
     return (
@@ -651,10 +755,17 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                         <option value="Type">Color: Type</option>
                         <option value="Health">Color: Health</option>
                     </select>
-                 </div>
-                 
+                </div>
+
                  {/* Zoom Controls */}
                  <div className="flex items-center gap-1">
+                     <button
+                        onClick={handleResetView}
+                        className={`p-1.5 rounded flex items-center gap-1 text-[10px] ${isDarkMode ? 'hover:bg-slate-800 text-slate-300 border border-slate-800' : 'hover:bg-slate-100 text-slate-600 border border-slate-200'} `}
+                     >
+                        <RotateCcw size={12} />
+                        Reset
+                     </button>
                      <button onClick={() => simState.current.transform.k *= 1.2} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Plus size={14}/></button>
                      <button onClick={() => simState.current.transform.k *= 0.8} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Minus size={14}/></button>
                      <button onClick={() => {simState.current.transform = {x:0, y:0, k:0.75}; simState.current.alpha=0.5}} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Maximize size={14}/></button>
