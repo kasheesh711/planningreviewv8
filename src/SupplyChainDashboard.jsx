@@ -88,10 +88,14 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const requestRef = useRef();
-    
+
     const [hideOrphans, setHideOrphans] = useState(false);
-    const [metricMode, setMetricMode] = useState('Type'); 
+    const [metricMode, setMetricMode] = useState('Type');
     const [spacing, setSpacing] = useState(50);
+    const [typeFilters, setTypeFilters] = useState({ RM: true, FG: true, DC: true });
+    const [orgFilter, setOrgFilter] = useState([]);
+    const [focusNodeId, setFocusNodeId] = useState(null);
+    const [localSelectedId, setLocalSelectedId] = useState(null);
 
     // Physics State (Ref to avoid re-renders)
     const simState = useRef({
@@ -105,7 +109,9 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         width: 0,
         height: 0,
         alpha: 1, // Simulation Heat
-        lastSpacing: 50
+        lastSpacing: 50,
+        mouseDown: null,
+        hasMoved: false
     });
 
     // 1. Prepare Graph Data
@@ -175,19 +181,34 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         return { nodes, links };
     }, [rawData, bomData]);
 
+    const invOrgOptions = useMemo(() => {
+        const options = new Set();
+        rawData.forEach(row => {
+            if (row['Inv Org']) options.add(row['Inv Org']);
+        });
+        return Array.from(options).sort();
+    }, [rawData]);
+
     // 2. Sync Props to Sim State
     useEffect(() => {
         // Merge new data with existing positions to prevent resets
         const currentNodes = simState.current.nodes;
-        
+
         let newNodes = graphData.nodes.map(n => {
             const existing = currentNodes.find(en => en.id === n.id);
-            return existing ? { ...existing, ...n } : { 
-                ...n, 
-                x: Math.random() * (simState.current.width || 800), 
-                y: Math.random() * (simState.current.height || 600) 
+            return existing ? { ...existing, ...n } : {
+                ...n,
+                x: Math.random() * (simState.current.width || 800),
+                y: Math.random() * (simState.current.height || 600)
             };
         });
+
+        if (orgFilter.length > 0) {
+            const allowed = new Set(orgFilter);
+            newNodes = newNodes.filter(n => allowed.has(n.invOrg));
+        }
+
+        newNodes = newNodes.filter(n => (typeFilters[n.type] ?? true));
 
         let newLinks = graphData.links.map(l => ({
             source: newNodes.find(n => n.id === l.source),
@@ -195,16 +216,62 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
             type: l.type
         })).filter(l => l.source && l.target);
 
-        if (hideOrphans) {
+        if (hideOrphans && !focusNodeId) {
             const activeIds = new Set();
             newLinks.forEach(l => { activeIds.add(l.source.id); activeIds.add(l.target.id); });
             newNodes = newNodes.filter(n => activeIds.has(n.id));
         }
 
+        if (focusNodeId) {
+            const availableIds = new Set(newNodes.map(n => n.id));
+            if (!availableIds.has(focusNodeId)) {
+                setFocusNodeId(null);
+                setLocalSelectedId(null);
+            } else {
+                const forwardAdj = new Map();
+                const backwardAdj = new Map();
+
+                newLinks.forEach(l => {
+                    if (!forwardAdj.has(l.source.id)) forwardAdj.set(l.source.id, []);
+                    if (!backwardAdj.has(l.target.id)) backwardAdj.set(l.target.id, []);
+                    forwardAdj.get(l.source.id).push(l.target.id);
+                    backwardAdj.get(l.target.id).push(l.source.id);
+                });
+
+                const allowed = new Set([focusNodeId]);
+                const forwardQueue = [focusNodeId];
+                while (forwardQueue.length) {
+                    const current = forwardQueue.shift();
+                    const targets = forwardAdj.get(current) || [];
+                    targets.forEach(t => {
+                        if (!allowed.has(t)) {
+                            allowed.add(t);
+                            forwardQueue.push(t);
+                        }
+                    });
+                }
+
+                const backwardQueue = [focusNodeId];
+                while (backwardQueue.length) {
+                    const current = backwardQueue.shift();
+                    const sources = backwardAdj.get(current) || [];
+                    sources.forEach(s => {
+                        if (!allowed.has(s)) {
+                            allowed.add(s);
+                            backwardQueue.push(s);
+                        }
+                    });
+                }
+
+                newNodes = newNodes.filter(n => allowed.has(n.id));
+                newLinks = newLinks.filter(l => allowed.has(l.source.id) && allowed.has(l.target.id));
+            }
+        }
+
         simState.current.nodes = newNodes;
         simState.current.links = newLinks;
         simState.current.alpha = 1; // Re-heat simulation
-    }, [graphData, hideOrphans]);
+    }, [graphData, hideOrphans, typeFilters, orgFilter, focusNodeId]);
 
     // 3. Auto-Focus Selection
     useEffect(() => {
@@ -246,7 +313,17 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                 const k_spring = 0.04;
                 const k_center = 0.015;
                 const grid_size = 100;
-                
+
+                // Calculate Org Centroids
+                const orgCentroids = new Map();
+                nodes.forEach(n => {
+                    if (!orgCentroids.has(n.invOrg)) orgCentroids.set(n.invOrg, { x: 0, y: 0, count: 0 });
+                    const c = orgCentroids.get(n.invOrg);
+                    c.x += n.x;
+                    c.y += n.y;
+                    c.count++;
+                });
+
                 // Build Grid
                 const grid = new Map();
                 nodes.forEach(n => {
@@ -284,6 +361,16 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                                 }
                             }
                         }
+                    }
+
+                    // Cluster Gravity
+                    const centroid = orgCentroids.get(node.invOrg);
+                    if (centroid && centroid.count > 0) {
+                        const avgX = centroid.x / centroid.count;
+                        const avgY = centroid.y / centroid.count;
+                        const k_cluster = 0.05;
+                        fx += (avgX - node.x) * k_cluster;
+                        fy += (avgY - node.y) * k_cluster;
                     }
 
                     // Center Gravity
@@ -335,7 +422,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
 
             // Draw Links
             ctx.lineWidth = 1 / transform.k;
-            const selectedIdStr = selectedNode ? `${selectedNode.itemCode}|${selectedNode.invOrg}` : null;
+            const selectedIdStr = localSelectedId ?? (selectedNode ? `${selectedNode.itemCode}|${selectedNode.invOrg}` : null);
             
             links.forEach(link => {
                 const isConnected = selectedIdStr && (link.source.id === selectedIdStr || link.target.id === selectedIdStr);
@@ -352,6 +439,29 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                     ctx.lineWidth = 1 / transform.k;
                 }
                 ctx.stroke();
+
+                if (transform.k > 0.5 || isConnected) {
+                    const arrowLength = 8 / transform.k;
+                    const arrowWidth = 5 / transform.k;
+                    const dx = link.target.x - link.source.x;
+                    const dy = link.target.y - link.source.y;
+                    const angle = Math.atan2(dy, dx);
+                    const targetRadius = (4 + Math.log(link.target.degree + 1) * 2);
+                    const targetX = link.target.x - Math.cos(angle) * targetRadius;
+                    const targetY = link.target.y - Math.sin(angle) * targetRadius;
+
+                    ctx.save();
+                    ctx.translate(targetX, targetY);
+                    ctx.rotate(angle);
+                    ctx.fillStyle = ctx.strokeStyle;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-arrowLength, -arrowWidth);
+                    ctx.lineTo(-arrowLength, arrowWidth);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
             });
             ctx.globalAlpha = 1;
 
@@ -378,8 +488,18 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                 ctx.beginPath();
                 // Size: Logarithmic scale based on degree
                 const radius = (4 + Math.log(node.degree + 1) * 2) * (isSelected ? 1.5 : 1);
-                
-                ctx.arc(node.x, node.y, radius, 0, Math.PI*2);
+
+                if (node.type === 'RM') {
+                    ctx.moveTo(node.x, node.y - radius);
+                    ctx.lineTo(node.x + radius, node.y + radius);
+                    ctx.lineTo(node.x - radius, node.y + radius);
+                    ctx.closePath();
+                } else if (node.type === 'FG') {
+                    const s = radius * 1.5;
+                    ctx.rect(node.x - s/2, node.y - s/2, s, s);
+                } else {
+                    ctx.arc(node.x, node.y, radius, 0, Math.PI*2);
+                }
                 ctx.fillStyle = isDimmed ? (isDarkMode ? '#1e293b' : '#e2e8f0') : fill;
                 ctx.fill();
 
@@ -407,7 +527,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
 
         requestRef.current = requestAnimationFrame(animate);
         return () => cancelAnimationFrame(requestRef.current);
-    }, [hideOrphans, metricMode, isDarkMode, selectedNode, spacing]);
+    }, [hideOrphans, metricMode, isDarkMode, selectedNode, spacing, localSelectedId]);
 
     // --- Resize Observer ---
     useEffect(() => {
@@ -434,25 +554,53 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         };
     };
 
+    const findNodeAt = (wx, wy) => {
+        const { nodes } = simState.current;
+        return nodes.find(n => {
+            const radius = (4 + Math.log(n.degree + 1) * 2) * 1.5;
+            return Math.abs(n.x - wx) <= radius && Math.abs(n.y - wy) <= radius;
+        });
+    };
+
+    const handleNodeSelect = (node) => {
+        if (node) {
+            setLocalSelectedId(node.id);
+            setFocusNodeId(node.id);
+            simState.current.alpha = 0.6;
+        } else {
+            setLocalSelectedId(null);
+            setFocusNodeId(null);
+        }
+    };
+
+    const handleGraphClick = (e) => {
+        const { x, y } = getMousePos(e);
+        const { transform } = simState.current;
+        const wx = (x - transform.x) / transform.k;
+        const wy = (y - transform.y) / transform.k;
+        const clickedNode = findNodeAt(wx, wy);
+        handleNodeSelect(clickedNode || null);
+    };
+
     const handleMouseDown = (e) => {
         const { x, y } = getMousePos(e);
-        const { transform, nodes } = simState.current;
-        
+        const { transform } = simState.current;
+
+        simState.current.mouseDown = { x, y };
+        simState.current.hasMoved = false;
+
         // World Coords
         const wx = (x - transform.x) / transform.k;
         const wy = (y - transform.y) / transform.k;
 
         // Hit Test
-        const clicked = nodes.find(n => {
-            const r = 10; // Hit radius
-            return Math.abs(n.x - wx) < r && Math.abs(n.y - wy) < r;
-        });
+        const clicked = findNodeAt(wx, wy);
 
         if (clicked) {
             simState.current.dragNode = clicked;
             simState.current.isDragging = true;
             simState.current.alpha = 1;
-            // We don't necessarily select it here to avoid conflict with parent selection, 
+            // We don't necessarily select it here to avoid conflict with parent selection,
             // but we could invoke a callback if we wanted click-to-select
         } else {
             simState.current.isDragging = true;
@@ -463,6 +611,12 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
     const handleMouseMove = (e) => {
         const { x, y } = getMousePos(e);
         const { transform, isDragging, dragNode, lastPan } = simState.current;
+
+        if (simState.current.mouseDown && !simState.current.hasMoved) {
+            const dx = x - simState.current.mouseDown.x;
+            const dy = y - simState.current.mouseDown.y;
+            if (Math.hypot(dx, dy) > 3) simState.current.hasMoved = true;
+        }
 
         if (dragNode) {
             dragNode.x = (x - transform.x) / transform.k;
@@ -476,35 +630,66 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e) => {
+        const isMouseUpEvent = e?.type === 'mouseup';
+        const shouldHandleClick = simState.current.mouseDown && !simState.current.hasMoved && isMouseUpEvent;
         simState.current.isDragging = false;
         simState.current.dragNode = null;
         simState.current.lastPan = null;
+        simState.current.mouseDown = null;
+        simState.current.hasMoved = false;
+
+        if (shouldHandleClick) {
+            handleGraphClick(e);
+        }
     };
 
     const handleWheel = (e) => {
         e.preventDefault();
         const { x, y } = getMousePos(e);
         const { transform } = simState.current;
-        
+
         const zoomIntensity = 0.001;
         const zoom = Math.exp(-e.deltaY * zoomIntensity);
         const newK = Math.min(Math.max(0.1, transform.k * zoom), 5);
-        
+
         // Zoom towards mouse
         const wx = (x - transform.x) / transform.k;
         const wy = (y - transform.y) / transform.k;
-        
+
         transform.x = x - wx * newK;
         transform.y = y - wy * newK;
         transform.k = newK;
+    };
+
+    const toggleTypeFilter = (type) => {
+        setTypeFilters(prev => ({ ...prev, [type]: !prev[type] }));
+        simState.current.alpha = 0.6;
+    };
+
+    const handleOrgFilterChange = (e) => {
+        const values = Array.from(e.target.selectedOptions).map(o => o.value);
+        setOrgFilter(values);
+        simState.current.alpha = 0.6;
+    };
+
+    const handleResetView = () => {
+        setHideOrphans(false);
+        setMetricMode('Type');
+        setSpacing(50);
+        setTypeFilters({ RM: true, FG: true, DC: true });
+        setOrgFilter([]);
+        setFocusNodeId(null);
+        setLocalSelectedId(null);
+        simState.current.transform = { x: 0, y: 0, k: 0.75 };
+        simState.current.alpha = 0.8;
     };
 
     return (
         <div className={`flex flex-col h-full rounded-2xl border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             {/* Controls Header */}
             <div className={`p-3 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
-                 <div className="flex items-center gap-4">
+                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2">
                         <Network className="w-4 h-4 text-indigo-500" />
                         <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Network Brain</h3>
@@ -522,27 +707,65 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                     </div>
 
                     <label className="flex items-center gap-2 text-[10px] cursor-pointer select-none">
-                        <input 
-                            type="checkbox" 
-                            checked={hideOrphans} 
-                            onChange={e => setHideOrphans(e.target.checked)} 
+                        <input
+                            type="checkbox"
+                            checked={hideOrphans}
+                            onChange={e => setHideOrphans(e.target.checked)}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
                         <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Hide Orphans</span>
                     </label>
-                    
-                    <select 
-                        value={metricMode} 
+
+                    <div className="flex items-center gap-1 text-[10px]">
+                        <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Types:</span>
+                        <button
+                            onClick={() => toggleTypeFilter('RM')}
+                            className={`px-2 py-1 rounded border transition ${typeFilters.RM ? (isDarkMode ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-200' : 'border-indigo-200 bg-indigo-50 text-indigo-700') : (isDarkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500')}`}
+                        >RM</button>
+                        <button
+                            onClick={() => toggleTypeFilter('FG')}
+                            className={`px-2 py-1 rounded border transition ${typeFilters.FG ? (isDarkMode ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDarkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500')}`}
+                        >FG</button>
+                        <button
+                            onClick={() => toggleTypeFilter('DC')}
+                            className={`px-2 py-1 rounded border transition ${typeFilters.DC ? (isDarkMode ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-100' : 'border-cyan-200 bg-cyan-50 text-cyan-700') : (isDarkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500')}`}
+                        >DC</button>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[10px]">
+                        <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Inv Org:</span>
+                        <select
+                            multiple
+                            size={Math.min(4, Math.max(1, invOrgOptions.length))}
+                            value={orgFilter}
+                            onChange={handleOrgFilterChange}
+                            className={`min-w-[120px] rounded border px-2 py-1 focus:outline-none focus:ring-1 text-[10px] ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200 focus:ring-indigo-500' : 'bg-white border-slate-200 text-slate-700 focus:ring-indigo-500'}`}
+                        >
+                            {invOrgOptions.map(opt => (
+                                <option key={opt} value={opt} className={isDarkMode ? 'bg-slate-900 text-slate-200' : ''}>{opt}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <select
+                        value={metricMode}
                         onChange={e => setMetricMode(e.target.value)}
                         className={`text-[10px] border-none rounded bg-transparent font-medium focus:ring-0 cursor-pointer ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}
                     >
                         <option value="Type">Color: Type</option>
                         <option value="Health">Color: Health</option>
                     </select>
-                 </div>
-                 
+                </div>
+
                  {/* Zoom Controls */}
                  <div className="flex items-center gap-1">
+                     <button
+                        onClick={handleResetView}
+                        className={`p-1.5 rounded flex items-center gap-1 text-[10px] ${isDarkMode ? 'hover:bg-slate-800 text-slate-300 border border-slate-800' : 'hover:bg-slate-100 text-slate-600 border border-slate-200'} `}
+                     >
+                        <RotateCcw size={12} />
+                        Reset
+                     </button>
                      <button onClick={() => simState.current.transform.k *= 1.2} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Plus size={14}/></button>
                      <button onClick={() => simState.current.transform.k *= 0.8} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Minus size={14}/></button>
                      <button onClick={() => {simState.current.transform = {x:0, y:0, k:0.75}; simState.current.alpha=0.5}} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Maximize size={14}/></button>
