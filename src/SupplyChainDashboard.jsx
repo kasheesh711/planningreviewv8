@@ -1601,12 +1601,12 @@ export default function SupplyChainDashboard() {
                 </div>
 
                 {/* --- CENTER MAIN CONTENT (75%) --- */}
-                <main className="flex-1 flex flex-col p-6 gap-6 min-w-0 overflow-hidden">
+                <main className="flex-1 flex flex-col p-6 gap-6 min-w-0 overflow-y-auto">
                     {activeView === 'dashboard' ? (
                         // DASHBOARD VIEW
                         <>
                             {/* Supply Chain Network Map (Columns) */}
-                            <div className={`flex-1 min-h-[550px] rounded-2xl shadow-sm border p-0 overflow-hidden flex flex-col transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
+                            <div className={`h-[600px] shrink-0 rounded-2xl shadow-sm border p-0 overflow-hidden flex flex-col transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
                                 <div className={`p-4 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
                                     <div className="flex items-center space-x-3">
                                         <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500"><Network className="w-5 h-5" /></div>
@@ -1627,12 +1627,12 @@ export default function SupplyChainDashboard() {
                             </div>
 
                             {/* Network Visualization Pane (NEW) */}
-                            <div className={`h-[500px] rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
+                            <div className={`h-[500px] shrink-0 rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
                                 <NetworkGraphView rawData={rawData} bomData={bomData} isDarkMode={isDarkMode} selectedNode={selectedItem} />
                             </div>
 
                             {/* RISK MONITOR (Bottom) */}
-                            <div className={`h-[400px] rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
+                            <div className={`h-[400px] shrink-0 rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
                                 <div className={`p-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
                                     <div className="flex items-center space-x-3">
                                         <div className="p-2 bg-amber-500/10 rounded-lg"><AlertTriangle className="w-5 h-5 text-amber-500" /></div>
