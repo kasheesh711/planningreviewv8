@@ -246,7 +246,17 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                 const k_spring = 0.04;
                 const k_center = 0.015;
                 const grid_size = 100;
-                
+
+                // Calculate Org Centroids
+                const orgCentroids = new Map();
+                nodes.forEach(n => {
+                    if (!orgCentroids.has(n.invOrg)) orgCentroids.set(n.invOrg, { x: 0, y: 0, count: 0 });
+                    const c = orgCentroids.get(n.invOrg);
+                    c.x += n.x;
+                    c.y += n.y;
+                    c.count++;
+                });
+
                 // Build Grid
                 const grid = new Map();
                 nodes.forEach(n => {
@@ -284,6 +294,16 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                                 }
                             }
                         }
+                    }
+
+                    // Cluster Gravity
+                    const centroid = orgCentroids.get(node.invOrg);
+                    if (centroid && centroid.count > 0) {
+                        const avgX = centroid.x / centroid.count;
+                        const avgY = centroid.y / centroid.count;
+                        const k_cluster = 0.05;
+                        fx += (avgX - node.x) * k_cluster;
+                        fy += (avgY - node.y) * k_cluster;
                     }
 
                     // Center Gravity
@@ -352,6 +372,29 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                     ctx.lineWidth = 1 / transform.k;
                 }
                 ctx.stroke();
+
+                if (transform.k > 0.5 || isConnected) {
+                    const arrowLength = 8 / transform.k;
+                    const arrowWidth = 5 / transform.k;
+                    const dx = link.target.x - link.source.x;
+                    const dy = link.target.y - link.source.y;
+                    const angle = Math.atan2(dy, dx);
+                    const targetRadius = (4 + Math.log(link.target.degree + 1) * 2);
+                    const targetX = link.target.x - Math.cos(angle) * targetRadius;
+                    const targetY = link.target.y - Math.sin(angle) * targetRadius;
+
+                    ctx.save();
+                    ctx.translate(targetX, targetY);
+                    ctx.rotate(angle);
+                    ctx.fillStyle = ctx.strokeStyle;
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-arrowLength, -arrowWidth);
+                    ctx.lineTo(-arrowLength, arrowWidth);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
             });
             ctx.globalAlpha = 1;
 
@@ -378,8 +421,18 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                 ctx.beginPath();
                 // Size: Logarithmic scale based on degree
                 const radius = (4 + Math.log(node.degree + 1) * 2) * (isSelected ? 1.5 : 1);
-                
-                ctx.arc(node.x, node.y, radius, 0, Math.PI*2);
+
+                if (node.type === 'RM') {
+                    ctx.moveTo(node.x, node.y - radius);
+                    ctx.lineTo(node.x + radius, node.y + radius);
+                    ctx.lineTo(node.x - radius, node.y + radius);
+                    ctx.closePath();
+                } else if (node.type === 'FG') {
+                    const s = radius * 1.5;
+                    ctx.rect(node.x - s/2, node.y - s/2, s, s);
+                } else {
+                    ctx.arc(node.x, node.y, radius, 0, Math.PI*2);
+                }
                 ctx.fillStyle = isDimmed ? (isDarkMode ? '#1e293b' : '#e2e8f0') : fill;
                 ctx.fill();
 
