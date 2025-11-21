@@ -3,7 +3,7 @@ import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, ComposedChart
 } from 'recharts';
 import {
-    Upload, Filter, Package, Calendar, ChevronDown, Search, Clock, ToggleLeft, ToggleRight, AlertTriangle, X, Table, SlidersHorizontal, ArrowUpDown, CheckSquare, Square, Activity, Layers, Factory, Network, FileSpreadsheet, ArrowRight, Warehouse, Box, ArrowLeftRight, MapPin, RefreshCw, RotateCcw, PanelLeft, Sun, Moon, MoreHorizontal
+    Upload, Filter, Package, Calendar, ChevronDown, Search, ToggleLeft, ToggleRight, AlertTriangle, X, Table, SlidersHorizontal, ArrowUpDown, CheckSquare, Square, Activity, Layers, Factory, Network, FileSpreadsheet, ArrowRight, Warehouse, Box, ArrowLeftRight, MapPin, RefreshCw, RotateCcw, PanelLeft, Sun, Moon, MoreHorizontal, Share2, LayoutDashboard, Clock, Move, MousePointer2, Plus, Minus, Maximize
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -82,6 +82,503 @@ SF,RM,BAB250-MR1,MYBGPM,FA,KG,MTS,BAB250-MR1/MYBGPM/FA/KG/MTS,Tot.Target Inv.,0,
 const DEFAULT_BOM = [
     { parent: 'AAG620-MR2', child: 'BAB250-MR1', ratio: 0.5, plant: 'MYBGPM' }, 
 ];
+
+// --- Network Analysis Component (High Performance) ---
+const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
+    const canvasRef = useRef(null);
+    const containerRef = useRef(null);
+    const requestRef = useRef();
+    
+    const [hideOrphans, setHideOrphans] = useState(false);
+    const [metricMode, setMetricMode] = useState('Type'); 
+    const [spacing, setSpacing] = useState(50);
+
+    // Physics State (Ref to avoid re-renders)
+    const simState = useRef({
+        nodes: [],
+        links: [],
+        transform: { x: 0, y: 0, k: 0.75 }, // Start Zoom
+        isDragging: false,
+        dragNode: null,
+        lastPan: null,
+        hoverNode: null,
+        width: 0,
+        height: 0,
+        alpha: 1, // Simulation Heat
+        lastSpacing: 50
+    });
+
+    // 1. Prepare Graph Data
+    const graphData = useMemo(() => {
+        const nodesMap = new Map();
+        const links = [];
+
+        // Nodes from Inventory
+        rawData.forEach(row => {
+            const id = `${row['Item Code']}|${row['Inv Org']}`;
+            if (!nodesMap.has(id)) {
+                let type = 'RM';
+                if (PLANT_ORGS.includes(row['Inv Org'])) type = 'FG';
+                else if (DC_ORGS.includes(row['Inv Org'])) type = 'DC';
+                else type = row.Type || 'RM';
+
+                nodesMap.set(id, {
+                    id,
+                    itemCode: row['Item Code'],
+                    invOrg: row['Inv Org'],
+                    type,
+                    // Random start pos
+                    x: Math.random() * 800,
+                    y: Math.random() * 600,
+                    vx: 0, vy: 0,
+                    degree: 0,
+                    currentInv: 0,
+                    targetInv: 0
+                });
+            }
+            // Metrics
+            const node = nodesMap.get(id);
+            if (row.Metric === 'Tot.Inventory (Forecast)' && row._dateObj) {
+                 if (node.currentInv === 0) node.currentInv = row.Value;
+            }
+            if (row.Metric === 'Tot.Target Inv.' && row._dateObj) {
+                 if (node.targetInv === 0) node.targetInv = row.Value;
+            }
+        });
+
+        const nodes = Array.from(nodesMap.values());
+
+        // Links from BOM
+        bomData.forEach(bom => {
+            const parentId = `${bom.parent}|${bom.plant}`;
+            const childId = `${bom.child}|${bom.plant}`;
+            if (nodesMap.has(parentId) && nodesMap.has(childId)) {
+                links.push({ source: parentId, target: childId, type: 'BOM' });
+                nodesMap.get(parentId).degree++;
+                nodesMap.get(childId).degree++;
+            }
+        });
+
+        // Links for Transfers (FG->DC)
+        const plantNodes = nodes.filter(n => n.type === 'FG');
+        const dcNodes = nodes.filter(n => n.type === 'DC');
+        plantNodes.forEach(pNode => {
+            dcNodes.forEach(dNode => {
+                if (pNode.itemCode === dNode.itemCode) {
+                    links.push({ source: pNode.id, target: dNode.id, type: 'FLOW' });
+                    pNode.degree++;
+                    dNode.degree++;
+                }
+            });
+        });
+
+        return { nodes, links };
+    }, [rawData, bomData]);
+
+    // 2. Sync Props to Sim State
+    useEffect(() => {
+        // Merge new data with existing positions to prevent resets
+        const currentNodes = simState.current.nodes;
+        
+        let newNodes = graphData.nodes.map(n => {
+            const existing = currentNodes.find(en => en.id === n.id);
+            return existing ? { ...existing, ...n } : { 
+                ...n, 
+                x: Math.random() * (simState.current.width || 800), 
+                y: Math.random() * (simState.current.height || 600) 
+            };
+        });
+
+        let newLinks = graphData.links.map(l => ({
+            source: newNodes.find(n => n.id === l.source),
+            target: newNodes.find(n => n.id === l.target),
+            type: l.type
+        })).filter(l => l.source && l.target);
+
+        if (hideOrphans) {
+            const activeIds = new Set();
+            newLinks.forEach(l => { activeIds.add(l.source.id); activeIds.add(l.target.id); });
+            newNodes = newNodes.filter(n => activeIds.has(n.id));
+        }
+
+        simState.current.nodes = newNodes;
+        simState.current.links = newLinks;
+        simState.current.alpha = 1; // Re-heat simulation
+    }, [graphData, hideOrphans]);
+
+    // 3. Auto-Focus Selection
+    useEffect(() => {
+        if (selectedNode && simState.current.nodes.length > 0) {
+            const targetId = `${selectedNode.itemCode}|${selectedNode.invOrg}`;
+            const targetNode = simState.current.nodes.find(n => n.id === targetId);
+            
+            if (targetNode) {
+                const k = 1.5; // Zoom level
+                // Center calculation: screenCenter - (nodePos * zoom)
+                const tx = (simState.current.width / 2) - (targetNode.x * k);
+                const ty = (simState.current.height / 2) - (targetNode.y * k);
+                
+                // Animate transform (simple lerp could go here, but direct set for now)
+                simState.current.transform = { x: tx, y: ty, k };
+                simState.current.alpha = 0.3; // Wake up physics briefly
+            }
+        }
+    }, [selectedNode]);
+
+    // 4. Physics & Render Loop
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        // Update Spacing Force
+        if (Math.abs(simState.current.lastSpacing - spacing) > 1) {
+            simState.current.alpha = 0.5;
+            simState.current.lastSpacing = spacing;
+        }
+
+        const animate = () => {
+            const { nodes, links, transform, width, height, alpha } = simState.current;
+            
+            // --- PHYSICS (Spatial Hash) ---
+            if (alpha > 0.01 || simState.current.isDragging) {
+                const k_repulse = 50 + (spacing * 5); // Slider controlled
+                const k_spring = 0.04;
+                const k_center = 0.015;
+                const grid_size = 100;
+                
+                // Build Grid
+                const grid = new Map();
+                nodes.forEach(n => {
+                    const gx = Math.floor(n.x / grid_size);
+                    const gy = Math.floor(n.y / grid_size);
+                    const key = `${gx},${gy}`;
+                    if (!grid.has(key)) grid.set(key, []);
+                    grid.get(key).push(n);
+                });
+
+                // Calculate Forces
+                nodes.forEach(node => {
+                    if (node === simState.current.dragNode) return;
+                    let fx = 0, fy = 0;
+
+                    // Repulsion (Neighbors only)
+                    const gx = Math.floor(node.x / grid_size);
+                    const gy = Math.floor(node.y / grid_size);
+                    for (let x = gx - 1; x <= gx + 1; x++) {
+                        for (let y = gy - 1; y <= gy + 1; y++) {
+                            const cellNodes = grid.get(`${x},${y}`);
+                            if (cellNodes) {
+                                for (const other of cellNodes) {
+                                    if (node !== other) {
+                                        const dx = node.x - other.x;
+                                        const dy = node.y - other.y;
+                                        let distSq = dx*dx + dy*dy;
+                                        if (distSq === 0) distSq = 1;
+                                        if (distSq < 25000) { // Cutoff
+                                            const f = k_repulse / distSq;
+                                            fx += (node.x - other.x) * (f/Math.sqrt(distSq)); // Normalize direction
+                                            fy += (node.y - other.y) * (f/Math.sqrt(distSq));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Center Gravity
+                    fx += (width/2 - node.x) * k_center;
+                    fy += (height/2 - node.y) * k_center;
+
+                    // Apply
+                    node.vx = (node.vx + fx) * 0.9;
+                    node.vy = (node.vy + fy) * 0.9;
+                    
+                    const maxSpeed = 15 * alpha;
+                    const v = Math.sqrt(node.vx*node.vx + node.vy*node.vy);
+                    if (v > maxSpeed) {
+                        node.vx = (node.vx / v) * maxSpeed;
+                        node.vy = (node.vy / v) * maxSpeed;
+                    }
+
+                    node.x += node.vx;
+                    node.y += node.vy;
+                });
+
+                // Springs
+                const springLen = 30 + (spacing * 0.5);
+                links.forEach(link => {
+                    const dx = link.target.x - link.source.x;
+                    const dy = link.target.y - link.source.y;
+                    const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                    const f = (dist - springLen) * k_spring;
+                    const fx = (dx/dist) * f;
+                    const fy = (dy/dist) * f;
+                    
+                    if (link.source !== simState.current.dragNode) {
+                        link.source.vx += fx; link.source.vy += fy;
+                    }
+                    if (link.target !== simState.current.dragNode) {
+                        link.target.vx -= fx; link.target.vy -= fy;
+                    }
+                });
+
+                // Cooldown
+                if (!simState.current.isDragging) simState.current.alpha *= 0.98;
+            }
+
+            // --- RENDER ---
+            ctx.clearRect(0, 0, width, height);
+            ctx.save();
+            ctx.translate(transform.x, transform.y);
+            ctx.scale(transform.k, transform.k);
+
+            // Draw Links
+            ctx.lineWidth = 1 / transform.k;
+            const selectedIdStr = selectedNode ? `${selectedNode.itemCode}|${selectedNode.invOrg}` : null;
+            
+            links.forEach(link => {
+                const isConnected = selectedIdStr && (link.source.id === selectedIdStr || link.target.id === selectedIdStr);
+                ctx.beginPath();
+                ctx.moveTo(link.source.x, link.source.y);
+                ctx.lineTo(link.target.x, link.target.y);
+                if (isConnected) {
+                    ctx.strokeStyle = isDarkMode ? '#818cf8' : '#4f46e5'; // Indigo 400/600
+                    ctx.globalAlpha = 0.8;
+                    ctx.lineWidth = 2 / transform.k;
+                } else {
+                    ctx.strokeStyle = isDarkMode ? '#ffffff' : '#000000';
+                    ctx.globalAlpha = selectedIdStr ? 0.05 : (isDarkMode ? 0.1 : 0.15);
+                    ctx.lineWidth = 1 / transform.k;
+                }
+                ctx.stroke();
+            });
+            ctx.globalAlpha = 1;
+
+            // Draw Nodes
+            nodes.forEach(node => {
+                // Status Color
+                let fill = '#94a3b8';
+                if (metricMode === 'Health') {
+                    const ratio = node.targetInv > 0 ? node.currentInv / node.targetInv : 1;
+                    if (ratio < 0.2) fill = '#ef4444';
+                    else if (ratio < 0.8) fill = '#f59e0b';
+                    else fill = '#10b981';
+                } else {
+                    if (node.type === 'RM') fill = '#6366f1'; // Indigo
+                    else if (node.type === 'FG') fill = '#10b981'; // Emerald
+                    else fill = '#06b6d4'; // Cyan
+                }
+
+                // State Styles
+                const isSelected = node.id === selectedIdStr;
+                const isNeighbor = selectedIdStr && links.some(l => (l.source.id === selectedIdStr && l.target.id === node.id) || (l.target.id === selectedIdStr && l.source.id === node.id));
+                const isDimmed = selectedIdStr && !isSelected && !isNeighbor;
+
+                ctx.beginPath();
+                // Size: Logarithmic scale based on degree
+                const radius = (4 + Math.log(node.degree + 1) * 2) * (isSelected ? 1.5 : 1);
+                
+                ctx.arc(node.x, node.y, radius, 0, Math.PI*2);
+                ctx.fillStyle = isDimmed ? (isDarkMode ? '#1e293b' : '#e2e8f0') : fill;
+                ctx.fill();
+
+                // Selection Ring
+                if (isSelected) {
+                    ctx.strokeStyle = isDarkMode ? '#fff' : '#000';
+                    ctx.lineWidth = 2 / transform.k;
+                    ctx.stroke();
+                }
+
+                // Text Label (LOD)
+                if (transform.k > 0.8 || isSelected || isNeighbor || node.type === 'FG') {
+                    if (!isDimmed) {
+                        ctx.fillStyle = isDarkMode ? '#f1f5f9' : '#1e293b';
+                        ctx.font = `${isSelected ? 'bold' : ''} ${10/transform.k}px sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(node.itemCode, node.x, node.y + radius + (12/transform.k));
+                    }
+                }
+            });
+
+            ctx.restore();
+            requestRef.current = requestAnimationFrame(animate);
+        };
+
+        requestRef.current = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(requestRef.current);
+    }, [hideOrphans, metricMode, isDarkMode, selectedNode, spacing]);
+
+    // --- Resize Observer ---
+    useEffect(() => {
+        const resize = () => {
+            if (containerRef.current && canvasRef.current) {
+                canvasRef.current.width = containerRef.current.offsetWidth;
+                canvasRef.current.height = containerRef.current.offsetHeight;
+                simState.current.width = containerRef.current.offsetWidth;
+                simState.current.height = containerRef.current.offsetHeight;
+                simState.current.alpha = 0.5;
+            }
+        };
+        window.addEventListener('resize', resize);
+        resize();
+        return () => window.removeEventListener('resize', resize);
+    }, []);
+
+    // --- Event Handlers ---
+    const getMousePos = (e) => {
+        const rect = canvasRef.current.getBoundingClientRect();
+        return {
+            x: (e.clientX - rect.left),
+            y: (e.clientY - rect.top)
+        };
+    };
+
+    const handleMouseDown = (e) => {
+        const { x, y } = getMousePos(e);
+        const { transform, nodes } = simState.current;
+        
+        // World Coords
+        const wx = (x - transform.x) / transform.k;
+        const wy = (y - transform.y) / transform.k;
+
+        // Hit Test
+        const clicked = nodes.find(n => {
+            const r = 10; // Hit radius
+            return Math.abs(n.x - wx) < r && Math.abs(n.y - wy) < r;
+        });
+
+        if (clicked) {
+            simState.current.dragNode = clicked;
+            simState.current.isDragging = true;
+            simState.current.alpha = 1;
+            // We don't necessarily select it here to avoid conflict with parent selection, 
+            // but we could invoke a callback if we wanted click-to-select
+        } else {
+            simState.current.isDragging = true;
+            simState.current.lastPan = { x, y };
+        }
+    };
+
+    const handleMouseMove = (e) => {
+        const { x, y } = getMousePos(e);
+        const { transform, isDragging, dragNode, lastPan } = simState.current;
+
+        if (dragNode) {
+            dragNode.x = (x - transform.x) / transform.k;
+            dragNode.y = (y - transform.y) / transform.k;
+            dragNode.vx = 0; dragNode.vy = 0;
+            simState.current.alpha = 0.6;
+        } else if (isDragging && lastPan) {
+            transform.x += x - lastPan.x;
+            transform.y += y - lastPan.y;
+            simState.current.lastPan = { x, y };
+        }
+    };
+
+    const handleMouseUp = () => {
+        simState.current.isDragging = false;
+        simState.current.dragNode = null;
+        simState.current.lastPan = null;
+    };
+
+    const handleWheel = (e) => {
+        e.preventDefault();
+        const { x, y } = getMousePos(e);
+        const { transform } = simState.current;
+        
+        const zoomIntensity = 0.001;
+        const zoom = Math.exp(-e.deltaY * zoomIntensity);
+        const newK = Math.min(Math.max(0.1, transform.k * zoom), 5);
+        
+        // Zoom towards mouse
+        const wx = (x - transform.x) / transform.k;
+        const wy = (y - transform.y) / transform.k;
+        
+        transform.x = x - wx * newK;
+        transform.y = y - wy * newK;
+        transform.k = newK;
+    };
+
+    return (
+        <div className={`flex flex-col h-full rounded-2xl border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+            {/* Controls Header */}
+            <div className={`p-3 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
+                 <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                        <Network className="w-4 h-4 text-indigo-500" />
+                        <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Network Brain</h3>
+                    </div>
+                    <div className={`h-4 w-px ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`} />
+                    
+                    {/* Physics Slider */}
+                    <div className="flex items-center gap-2 w-32">
+                        <Move className="w-3 h-3 text-slate-400" />
+                        <input 
+                            type="range" min="1" max="100" value={spacing} 
+                            onChange={e => setSpacing(parseInt(e.target.value))}
+                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                        />
+                    </div>
+
+                    <label className="flex items-center gap-2 text-[10px] cursor-pointer select-none">
+                        <input 
+                            type="checkbox" 
+                            checked={hideOrphans} 
+                            onChange={e => setHideOrphans(e.target.checked)} 
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Hide Orphans</span>
+                    </label>
+                    
+                    <select 
+                        value={metricMode} 
+                        onChange={e => setMetricMode(e.target.value)}
+                        className={`text-[10px] border-none rounded bg-transparent font-medium focus:ring-0 cursor-pointer ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}
+                    >
+                        <option value="Type">Color: Type</option>
+                        <option value="Health">Color: Health</option>
+                    </select>
+                 </div>
+                 
+                 {/* Zoom Controls */}
+                 <div className="flex items-center gap-1">
+                     <button onClick={() => simState.current.transform.k *= 1.2} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Plus size={14}/></button>
+                     <button onClick={() => simState.current.transform.k *= 0.8} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Minus size={14}/></button>
+                     <button onClick={() => {simState.current.transform = {x:0, y:0, k:0.75}; simState.current.alpha=0.5}} className={`p-1 rounded ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><Maximize size={14}/></button>
+                 </div>
+            </div>
+            
+            {/* Canvas */}
+            <div ref={containerRef} className="flex-1 relative bg-[#0f0f11] cursor-move overflow-hidden touch-none">
+                <canvas 
+                    ref={canvasRef} 
+                    className="w-full h-full block"
+                    onMouseDown={handleMouseDown}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    onWheel={handleWheel}
+                />
+                
+                {/* Overlay Legend */}
+                <div className="absolute bottom-3 left-3 pointer-events-none flex gap-3">
+                    <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur px-2 py-1 rounded text-[10px] text-white border border-white/10">
+                        <div className="w-2 h-2 rounded-full bg-indigo-500"></div>RM
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur px-2 py-1 rounded text-[10px] text-white border border-white/10">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500"></div>FG
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur px-2 py-1 rounded text-[10px] text-white border border-white/10">
+                        <div className="w-2 h-2 rounded-full bg-cyan-500"></div>DC
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- PREVIOUS COMPONENTS (CustomTooltip, SearchableSelect, WeeklyHealthIndicator, NodeCard, RenderColumn) ---
 
 const CustomTooltip = ({ active, payload, label, isDarkMode }) => {
     if (active && payload && payload.length) {
@@ -211,7 +708,6 @@ const SearchableSelect = ({ label, value, options, onChange, multi = false, isDa
     );
 };
 
-// --- Weekly Health Indicator ---
 const WeeklyHealthIndicator = React.memo(({ data, isDarkMode }) => {
     if (!data || data.length === 0) return <div className="text-[9px] opacity-40 mt-1.5">No forecast data</div>;
 
@@ -233,7 +729,6 @@ const WeeklyHealthIndicator = React.memo(({ data, isDarkMode }) => {
     );
 });
 
-// --- Node Card ---
 const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMode }) => {
     const baseClasses = isDarkMode 
         ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800 hover:border-slate-600" 
@@ -284,7 +779,6 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
     );
 });
 
-// --- Render Column Helper ---
 const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSearchTerm, setSort, sortValue, isActiveCol, isDarkMode, children }) => (
     <div className={`flex flex-col h-full min-h-0 border-r ${isDarkMode ? 'border-slate-800 bg-slate-900/20' : 'border-slate-200/60 bg-slate-50/30'} ${isActiveCol ? (isDarkMode ? 'bg-indigo-900/10' : 'bg-indigo-50/30') : ''} min-w-[300px] flex-1`}>
         <div className={`p-4 border-b backdrop-blur-sm sticky top-0 z-10 ${isDarkMode ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200/60 bg-white/80'}`}>
@@ -295,7 +789,6 @@ const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSea
                 </h3>
                 <div className="flex gap-1">
                     <button onClick={() => setSort('alpha')} className={`p-1.5 rounded transition-colors ${sortValue === 'alpha' ? (isDarkMode ? 'bg-slate-800 text-indigo-400' : 'bg-white shadow-sm text-indigo-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Alpha"><ArrowUpDown className="w-3.5 h-3.5" /></button>
-                    {/* CHANGED: 'invAsc' means Lowest First */}
                     <button onClick={() => setSort('invAsc')} className={`p-1.5 rounded transition-colors ${sortValue === 'invAsc' ? (isDarkMode ? 'bg-slate-800 text-indigo-400' : 'bg-white shadow-sm text-indigo-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Inv (Low-to-High)"><Activity className="w-3.5 h-3.5" /></button>
                 </div>
             </div>
@@ -323,7 +816,7 @@ const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSea
 ));
 
 
-// --- Supply Chain Network Map Component ---
+// --- Supply Chain Network Map Component (The Dashboard View) ---
 const SupplyChainMap = ({ selectedItemFromParent, bomData, inventoryData, dateRange, onOpenDetails, onNodeSelect, isDarkMode }) => {
     const [mapFocus, setMapFocus] = useState(null); 
     
@@ -370,7 +863,7 @@ const SupplyChainMap = ({ selectedItemFromParent, bomData, inventoryData, dateRa
 
     // 1. Index Data
     const dataIndex = useMemo(() => {
-        const idx = {}; // Key: "ItemCode|InvOrg"
+        const idx = {}; 
         const rmKeys = new Set();
         const fgKeys = new Set();
         const dcKeys = new Set();
@@ -391,8 +884,8 @@ const SupplyChainMap = ({ selectedItemFromParent, bomData, inventoryData, dateRa
 
     // 2. Index BOM
     const bomIndex = useMemo(() => {
-        const p2c = {}; // Parent+Plant -> Children+Plant
-        const c2p = {}; // Child+Plant -> Parents+Plant
+        const p2c = {}; 
+        const c2p = {}; 
         const parents = new Set();
         const children = new Set();
 
@@ -455,7 +948,6 @@ const SupplyChainMap = ({ selectedItemFromParent, bomData, inventoryData, dateRa
             return (a.Start ?? 0) - (b.Start ?? 0);
         });
 
-        // Show the starting forecast inventory value
         const currentInv = invRows.length > 0 ? invRows[0].Value : 0;
         const status = currentInv < 0 ? 'Critical' : (currentInv < 1000 ? 'Low' : 'Good');
 
@@ -534,7 +1026,6 @@ const SupplyChainMap = ({ selectedItemFromParent, bomData, inventoryData, dateRa
 
         const sorter = (a, b, method) => {
             if (method === 'alpha') return a.id.localeCompare(b.id);
-            // invAsc = Lowest Inventory First (Ascending)
             if (method === 'invAsc') return a.currentInv - b.currentInv;
             return 0;
         };
@@ -673,24 +1164,22 @@ const SupplyChainMap = ({ selectedItemFromParent, bomData, inventoryData, dateRa
 };
 
 export default function SupplyChainDashboard() {
+    const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' | 'network'
     const [rawData, setRawData] = useState([]);
     const [bomData, setBomData] = useState(DEFAULT_BOM);
     const [dateRange, setDateRange] = useState({ start: '', end: '' });
-    
-    // --- DEFAULT METRIC CHANGE ---
     const [filters, setFilters] = useState({
         itemCode: 'All',
         invOrg: 'All',
         itemClass: 'All',
         uom: 'All',
         strategy: 'All',
-        metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] // New Default
+        metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] 
     });
     
     const [isLeadTimeMode, setIsLeadTimeMode] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
-    const [hoveredDate, setHoveredDate] = useState(null);
     const [riskFilters, setRiskFilters] = useState({
         critical: true,
         watchOut: true,
@@ -881,8 +1370,8 @@ export default function SupplyChainDashboard() {
             const key = `${item['Item Code']}|${item['Inv Org']}`;
             if (!grouped[key]) grouped[key] = { itemCode: item['Item Code'], invOrg: item['Inv Org'], days: {} };
             if (!grouped[key].days[item.Date]) grouped[key].days[item.Date] = { _dateObj: item._dateObj, metrics: {} };
-            const normMetric = item.Metric.trim();
-            grouped[key].days[item.Date].metrics[normMetric] = (grouped[key].days[item.Date].metrics[normMetric] || 0) + (item.Value || 0);
+            const mName = item.Metric.trim();
+            grouped[key].days[item.Date].metrics[mName] = (grouped[key].days[item.Date].metrics[mName] || 0) + (item.Value || 0);
         });
 
         let rows = [];
@@ -1010,7 +1499,6 @@ export default function SupplyChainDashboard() {
         setSelectedItem(null);
         setIsDetailOpen(false);
         setGanttSort('itemCode');
-        setHoveredDate(null);
         const validTimes = [];
         for (let i = 0; i < rawData.length; i++) {
             const t = rawData[i]._dateObj ? rawData[i]._dateObj.getTime() : NaN;
@@ -1068,7 +1556,6 @@ export default function SupplyChainDashboard() {
                         </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                        {/* Dark Mode Toggle */}
                         <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-xl border transition-all ${isDarkMode ? 'bg-slate-800 border-slate-700 text-yellow-400 hover:text-yellow-300' : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600'}`}>
                             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                         </button>
@@ -1088,92 +1575,121 @@ export default function SupplyChainDashboard() {
             </header>
 
             <div className="flex min-h-[calc(100vh-64px)] max-w-[1800px] mx-auto">
-                {/* --- LEFT SIDEBAR PLACEHOLDER (10%) --- */}
-                <div className={`hidden xl:block w-[5%] 2xl:w-[10%] border-r ${isDarkMode ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50/50'}`}>
-                    <div className="h-full w-full flex items-center justify-center opacity-10">
-                        <PanelLeft className="w-6 h-6" />
-                    </div>
+                {/* --- NAVIGATION SIDEBAR (Left) --- */}
+                <div className={`hidden xl:flex flex-col w-[5%] 2xl:w-[4%] border-r py-6 items-center gap-4 ${isDarkMode ? 'border-slate-800 bg-slate-900/50' : 'border-slate-200 bg-slate-50/50'}`}>
+                    <button 
+                        onClick={() => setActiveView('dashboard')}
+                        className={`p-3 rounded-xl transition-all group relative ${activeView === 'dashboard' 
+                            ? (isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600') 
+                            : (isDarkMode ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-300' : 'text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-600')}`}
+                        title="Dashboard View"
+                    >
+                        <LayoutDashboard className="w-5 h-5" />
+                        {activeView === 'dashboard' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full" />}
+                    </button>
+                    
+                    <button 
+                        onClick={() => setActiveView('network')}
+                        className={`p-3 rounded-xl transition-all group relative ${activeView === 'network' 
+                            ? (isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600') 
+                            : (isDarkMode ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-300' : 'text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-600')}`}
+                        title="Network Graph Analysis"
+                    >
+                        <Share2 className="w-5 h-5" />
+                        {activeView === 'network' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full" />}
+                    </button>
                 </div>
 
-                {/* --- CENTER MAIN CONTENT (70%) --- */}
+                {/* --- CENTER MAIN CONTENT (75%) --- */}
                 <main className="flex-1 flex flex-col p-6 gap-6 min-w-0 overflow-hidden">
-                    {/* SUPPLY CHAIN MAP (Main Stage) */}
-                    <div className={`flex-1 min-h-[550px] rounded-2xl shadow-sm border p-0 overflow-hidden flex flex-col transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
-                        <div className={`p-4 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
-                            <div className="flex items-center space-x-3">
-                                <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500"><Network className="w-5 h-5" /></div>
-                                <div><h2 className={`text-base font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Supply Chain Network</h2><p className="text-xs text-slate-500">Live Inventory Map</p></div>
+                    {activeView === 'dashboard' ? (
+                        // DASHBOARD VIEW
+                        <>
+                            {/* Supply Chain Network Map (Columns) */}
+                            <div className={`flex-1 min-h-[550px] rounded-2xl shadow-sm border p-0 overflow-hidden flex flex-col transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
+                                <div className={`p-4 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
+                                    <div className="flex items-center space-x-3">
+                                        <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500"><Network className="w-5 h-5" /></div>
+                                        <div><h2 className={`text-base font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Supply Chain Network</h2><p className="text-xs text-slate-500">Live Inventory Map</p></div>
+                                    </div>
+                                </div>
+                                <div className="flex-1 relative">
+                                     <SupplyChainMap 
+                                        selectedItemFromParent={selectedItem} 
+                                        bomData={bomData} 
+                                        inventoryData={rawData} 
+                                        dateRange={dateRange} 
+                                        onOpenDetails={onOpenDetailsCallback}
+                                        onNodeSelect={onNodeSelectCallback}
+                                        isDarkMode={isDarkMode}
+                                    />
+                                </div>
                             </div>
-                        </div>
-                        <div className="flex-1 relative">
-                             <SupplyChainMap 
-                                selectedItemFromParent={selectedItem} 
-                                bomData={bomData} 
-                                inventoryData={rawData} 
-                                dateRange={dateRange} 
-                                onOpenDetails={onOpenDetailsCallback}
-                                onNodeSelect={onNodeSelectCallback}
-                                isDarkMode={isDarkMode}
-                            />
-                        </div>
-                    </div>
 
-                    {/* RISK MONITOR (Bottom) */}
-                    <div className={`h-[400px] rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
-                        <div className={`p-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
-                            <div className="flex items-center space-x-3">
-                                <div className="p-2 bg-amber-500/10 rounded-lg"><AlertTriangle className="w-5 h-5 text-amber-500" /></div>
-                                <div><h2 className={`text-base font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Risk Monitor</h2><p className="text-xs text-slate-500">Shortage Timeline</p></div>
+                            {/* Network Visualization Pane (NEW) */}
+                            <div className={`h-[500px] rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
+                                <NetworkGraphView rawData={rawData} bomData={bomData} isDarkMode={isDarkMode} selectedNode={selectedItem} />
                             </div>
-                            {/* Minified Risk Controls */}
-                            <div className={`flex items-center gap-4 p-1.5 rounded-xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                 <div className={`flex items-center space-x-2 border-r pr-4 pl-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
-                                    <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-                                    <select className={`text-xs border-none focus:ring-0 font-medium bg-transparent cursor-pointer ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`} value={ganttSort} onChange={(e) => setGanttSort(e.target.value)}>
-                                        <option value="itemCode">Name</option>
-                                        <option value="leadTime">Lead Time</option>
-                                        <option value="duration">Duration</option>
-                                    </select>
-                                </div>
-                                <div className={`flex items-center space-x-3 text-xs font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={riskFilters.critical} onChange={e => setRiskFilters(p => ({...p, critical: e.target.checked}))} className="rounded text-red-500 focus:ring-red-500 border-slate-300" />Critical</label>
-                                    <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={riskFilters.watchOut} onChange={e => setRiskFilters(p => ({...p, watchOut: e.target.checked}))} className="rounded text-amber-400 focus:ring-amber-400 border-slate-300" />Watch Out</label>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto relative scrollbar-thin">
-                            {ganttData.length > 0 ? (
-                                ganttData.map((row, idx) => (
-                                    <div key={idx} className={`flex items-center border-b h-12 group transition-all duration-200 
-                                        ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-50 hover:bg-slate-50'}
-                                        ${selectedItem && selectedItem.itemCode === row.itemCode && selectedItem.invOrg === row.invOrg ? (isDarkMode ? 'bg-indigo-900/30' : 'bg-indigo-50/60') : ''}`}>
-                                        <div className={`flex-shrink-0 px-6 py-2 border-r truncate cursor-pointer h-full flex flex-col justify-center ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`} style={{ width: Y_AXIS_WIDTH }} onClick={() => setSelectedItem({ itemCode: row.itemCode, invOrg: row.invOrg })}>
-                                            <div className={`font-bold text-sm truncate transition-colors ${isDarkMode ? 'text-slate-300 group-hover:text-indigo-400' : 'text-slate-700 group-hover:text-indigo-600'}`}>{row.itemCode}</div>
-                                            <div className="text-xs text-slate-500 font-mono mt-0.5">{row.invOrg}</div>
+
+                            {/* RISK MONITOR (Bottom) */}
+                            <div className={`h-[400px] rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
+                                <div className={`p-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
+                                    <div className="flex items-center space-x-3">
+                                        <div className="p-2 bg-amber-500/10 rounded-lg"><AlertTriangle className="w-5 h-5 text-amber-500" /></div>
+                                        <div><h2 className={`text-base font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Risk Monitor</h2><p className="text-xs text-slate-500">Shortage Timeline</p></div>
+                                    </div>
+                                    <div className={`flex items-center gap-4 p-1.5 rounded-xl border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                                         <div className={`flex items-center space-x-2 border-r pr-4 pl-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
+                                            <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                                            <select className={`text-xs border-none focus:ring-0 font-medium bg-transparent cursor-pointer ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`} value={ganttSort} onChange={(e) => setGanttSort(e.target.value)}>
+                                                <option value="itemCode">Name</option>
+                                                <option value="leadTime">Lead Time</option>
+                                                <option value="duration">Duration</option>
+                                            </select>
                                         </div>
-                                        <div className="flex-1 relative h-full cursor-pointer" style={{ marginLeft: '20px', marginRight: '30px' }} onClick={() => setSelectedItem({ itemCode: row.itemCode, invOrg: row.invOrg })}>
-                                            <div className="absolute inset-0 flex opacity-10 pointer-events-none">
-                                                <div className={`w-1/4 border-r h-full ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}></div><div className={`w-1/4 border-r h-full ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}></div><div className={`w-1/4 border-r h-full ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}></div>
-                                            </div>
-                                            {row.blocks.map((block, bIdx) => {
-                                                const style = getGanttStyles(block.start, block.end);
-                                                const isCritical = block.status === 'Critical';
-                                                const colorClass = isCritical ? 'bg-red-500' : 'bg-amber-500';
-                                                return (
-                                                    <div key={bIdx} className={`absolute h-4 top-4 rounded-sm shadow-sm cursor-pointer hover:scale-y-110 transition-transform ${colorClass}`} style={{...style, minWidth: '8px'}} title={`${block.status}: ${block.days} Days`}></div>
-                                                );
-                                            })}
+                                        <div className={`flex items-center space-x-3 text-xs font-medium ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                                            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={riskFilters.critical} onChange={e => setRiskFilters(p => ({...p, critical: e.target.checked}))} className="rounded text-red-500 focus:ring-red-500 border-slate-300" />Critical</label>
+                                            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={riskFilters.watchOut} onChange={e => setRiskFilters(p => ({...p, watchOut: e.target.checked}))} className="rounded text-amber-400 focus:ring-amber-400 border-slate-300" />Watch Out</label>
                                         </div>
                                     </div>
-                                ))
-                            ) : <EmptyState msg="No risks match current filters" isDarkMode={isDarkMode} />}
-                        </div>
-                    </div>
+                                </div>
+                                <div className="flex-1 overflow-y-auto relative scrollbar-thin">
+                                    {ganttData.length > 0 ? (
+                                        ganttData.map((row, idx) => (
+                                            <div key={idx} className={`flex items-center border-b h-12 group transition-all duration-200 
+                                                ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-50 hover:bg-slate-50'}
+                                                ${selectedItem && selectedItem.itemCode === row.itemCode && selectedItem.invOrg === row.invOrg ? (isDarkMode ? 'bg-indigo-900/30' : 'bg-indigo-50/60') : ''}`}>
+                                                <div className={`flex-shrink-0 px-6 py-2 border-r truncate cursor-pointer h-full flex flex-col justify-center ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`} style={{ width: Y_AXIS_WIDTH }} onClick={() => setSelectedItem({ itemCode: row.itemCode, invOrg: row.invOrg })}>
+                                                    <div className={`font-bold text-sm truncate transition-colors ${isDarkMode ? 'text-slate-300 group-hover:text-indigo-400' : 'text-slate-700 group-hover:text-indigo-600'}`}>{row.itemCode}</div>
+                                                    <div className="text-xs text-slate-500 font-mono mt-0.5">{row.invOrg}</div>
+                                                </div>
+                                                <div className="flex-1 relative h-full cursor-pointer" style={{ marginLeft: '20px', marginRight: '30px' }} onClick={() => setSelectedItem({ itemCode: row.itemCode, invOrg: row.invOrg })}>
+                                                    <div className="absolute inset-0 flex opacity-10 pointer-events-none">
+                                                        <div className={`w-1/4 border-r h-full ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}></div><div className={`w-1/4 border-r h-full ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}></div><div className={`w-1/4 border-r h-full ${isDarkMode ? 'border-slate-700' : 'border-slate-300'}`}></div>
+                                                    </div>
+                                                    {row.blocks.map((block, bIdx) => {
+                                                        const style = getGanttStyles(block.start, block.end);
+                                                        const isCritical = block.status === 'Critical';
+                                                        const colorClass = isCritical ? 'bg-red-500' : 'bg-amber-500';
+                                                        return (
+                                                            <div key={bIdx} className={`absolute h-4 top-4 rounded-sm shadow-sm cursor-pointer hover:scale-y-110 transition-transform ${colorClass}`} style={{...style, minWidth: '8px'}} title={`${block.status}: ${block.days} Days`}></div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : <EmptyState msg="No risks match current filters" isDarkMode={isDarkMode} />}
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        // NETWORK GRAPH VIEW (FULL SCREEN MODE)
+                        <NetworkGraphView rawData={rawData} bomData={bomData} isDarkMode={isDarkMode} />
+                    )}
                 </main>
 
                 {/* --- RIGHT SIDEBAR (20%) --- */}
                 <aside className={`w-[300px] 2xl:w-[20%] border-l h-screen sticky top-0 overflow-y-auto z-30 shadow-xl flex flex-col transition-colors duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
-                    {/* 1. Trend Graph (Top Priority) */}
                     <div className={`p-5 border-b ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
                         <div className="flex items-center gap-2 mb-4">
                             <Activity className="w-4 h-4 text-emerald-500" />
@@ -1199,7 +1715,7 @@ export default function SupplyChainDashboard() {
                         </div>
                     </div>
 
-                    {/* 2. Global Filters (Stacked) */}
+                    {/* Global Filters (Stacked) */}
                     <div className="p-5 flex-1 flex flex-col gap-6">
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2"><Filter className="w-3 h-3" /> Filters</h3>
@@ -1207,7 +1723,6 @@ export default function SupplyChainDashboard() {
                         </div>
                         
                         <div className="space-y-5">
-                            {/* Stacked Vertical Inputs */}
                             <div>
                                 <label className={`block text-[9px] font-bold uppercase mb-1.5 tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Analysis Mode</label>
                                 <button onClick={() => setIsLeadTimeMode(!isLeadTimeMode)} className={`flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-all ${isLeadTimeMode ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-500' : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>
@@ -1271,7 +1786,6 @@ export default function SupplyChainDashboard() {
                                                 } else if (val > 0) {
                                                     cellClass = isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium";
                                                 }
-
                                                 return <td key={dateStr} className={`px-3 py-2 text-right border-r transition-colors font-mono text-xs ${cellClass} ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>{val !== undefined ? val.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</td>;
                                             })}
                                         </tr>
@@ -1282,7 +1796,7 @@ export default function SupplyChainDashboard() {
                     </div>
                 )}
             </div>
-            <style jsx global>{`@keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: .85; } } .animate-pulse-slow { animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }`}</style>
+            <style>{`@keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: .85; } } .animate-pulse-slow { animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }`}</style>
         </div>
     );
 }
