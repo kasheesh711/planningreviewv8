@@ -90,8 +90,10 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
     const requestRef = useRef();
     
     const [hideOrphans, setHideOrphans] = useState(false);
-    const [metricMode, setMetricMode] = useState('Type'); 
+    const [metricMode, setMetricMode] = useState('Type');
     const [spacing, setSpacing] = useState(50);
+    const [typeFilters, setTypeFilters] = useState({ RM: true, FG: true, DC: true });
+    const [orgFilter, setOrgFilter] = useState([]);
 
     // Physics State (Ref to avoid re-renders)
     const simState = useRef({
@@ -175,19 +177,34 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         return { nodes, links };
     }, [rawData, bomData]);
 
+    const invOrgOptions = useMemo(() => {
+        const options = new Set();
+        rawData.forEach(row => {
+            if (row['Inv Org']) options.add(row['Inv Org']);
+        });
+        return Array.from(options).sort();
+    }, [rawData]);
+
     // 2. Sync Props to Sim State
     useEffect(() => {
         // Merge new data with existing positions to prevent resets
         const currentNodes = simState.current.nodes;
-        
+
         let newNodes = graphData.nodes.map(n => {
             const existing = currentNodes.find(en => en.id === n.id);
-            return existing ? { ...existing, ...n } : { 
-                ...n, 
-                x: Math.random() * (simState.current.width || 800), 
-                y: Math.random() * (simState.current.height || 600) 
+            return existing ? { ...existing, ...n } : {
+                ...n,
+                x: Math.random() * (simState.current.width || 800),
+                y: Math.random() * (simState.current.height || 600)
             };
         });
+
+        if (orgFilter.length > 0) {
+            const allowed = new Set(orgFilter);
+            newNodes = newNodes.filter(n => allowed.has(n.invOrg));
+        }
+
+        newNodes = newNodes.filter(n => (typeFilters[n.type] ?? true));
 
         let newLinks = graphData.links.map(l => ({
             source: newNodes.find(n => n.id === l.source),
@@ -204,7 +221,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         simState.current.nodes = newNodes;
         simState.current.links = newLinks;
         simState.current.alpha = 1; // Re-heat simulation
-    }, [graphData, hideOrphans]);
+    }, [graphData, hideOrphans, typeFilters, orgFilter]);
 
     // 3. Auto-Focus Selection
     useEffect(() => {
@@ -539,25 +556,36 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
         e.preventDefault();
         const { x, y } = getMousePos(e);
         const { transform } = simState.current;
-        
+
         const zoomIntensity = 0.001;
         const zoom = Math.exp(-e.deltaY * zoomIntensity);
         const newK = Math.min(Math.max(0.1, transform.k * zoom), 5);
-        
+
         // Zoom towards mouse
         const wx = (x - transform.x) / transform.k;
         const wy = (y - transform.y) / transform.k;
-        
+
         transform.x = x - wx * newK;
         transform.y = y - wy * newK;
         transform.k = newK;
+    };
+
+    const toggleTypeFilter = (type) => {
+        setTypeFilters(prev => ({ ...prev, [type]: !prev[type] }));
+        simState.current.alpha = 0.6;
+    };
+
+    const handleOrgFilterChange = (e) => {
+        const values = Array.from(e.target.selectedOptions).map(o => o.value);
+        setOrgFilter(values);
+        simState.current.alpha = 0.6;
     };
 
     return (
         <div className={`flex flex-col h-full rounded-2xl border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             {/* Controls Header */}
             <div className={`p-3 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
-                 <div className="flex items-center gap-4">
+                 <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2">
                         <Network className="w-4 h-4 text-indigo-500" />
                         <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Network Brain</h3>
@@ -575,17 +603,48 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                     </div>
 
                     <label className="flex items-center gap-2 text-[10px] cursor-pointer select-none">
-                        <input 
-                            type="checkbox" 
-                            checked={hideOrphans} 
-                            onChange={e => setHideOrphans(e.target.checked)} 
+                        <input
+                            type="checkbox"
+                            checked={hideOrphans}
+                            onChange={e => setHideOrphans(e.target.checked)}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                         />
                         <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Hide Orphans</span>
                     </label>
-                    
-                    <select 
-                        value={metricMode} 
+
+                    <div className="flex items-center gap-1 text-[10px]">
+                        <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Types:</span>
+                        <button
+                            onClick={() => toggleTypeFilter('RM')}
+                            className={`px-2 py-1 rounded border transition ${typeFilters.RM ? (isDarkMode ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-200' : 'border-indigo-200 bg-indigo-50 text-indigo-700') : (isDarkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500')}`}
+                        >RM</button>
+                        <button
+                            onClick={() => toggleTypeFilter('FG')}
+                            className={`px-2 py-1 rounded border transition ${typeFilters.FG ? (isDarkMode ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-700') : (isDarkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500')}`}
+                        >FG</button>
+                        <button
+                            onClick={() => toggleTypeFilter('DC')}
+                            className={`px-2 py-1 rounded border transition ${typeFilters.DC ? (isDarkMode ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-100' : 'border-cyan-200 bg-cyan-50 text-cyan-700') : (isDarkMode ? 'border-slate-700 text-slate-400' : 'border-slate-200 text-slate-500')}`}
+                        >DC</button>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-[10px]">
+                        <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Inv Org:</span>
+                        <select
+                            multiple
+                            size={Math.min(4, Math.max(1, invOrgOptions.length))}
+                            value={orgFilter}
+                            onChange={handleOrgFilterChange}
+                            className={`min-w-[120px] rounded border px-2 py-1 focus:outline-none focus:ring-1 text-[10px] ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200 focus:ring-indigo-500' : 'bg-white border-slate-200 text-slate-700 focus:ring-indigo-500'}`}
+                        >
+                            {invOrgOptions.map(opt => (
+                                <option key={opt} value={opt} className={isDarkMode ? 'bg-slate-900 text-slate-200' : ''}>{opt}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <select
+                        value={metricMode}
                         onChange={e => setMetricMode(e.target.value)}
                         className={`text-[10px] border-none rounded bg-transparent font-medium focus:ring-0 cursor-pointer ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}
                     >
