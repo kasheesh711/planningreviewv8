@@ -15,6 +15,82 @@ const GOOGLE_SHEET_CONFIG = {
 const PLANT_ORGS = ['THRYPM', 'MYBGPM'];
 const DC_ORGS = ['THBNDM', 'VNHCDM', 'VNHNDM', 'IDCKDM', 'PHPSDM'];
 
+const HIGH_RUNNERS = [
+    { itemCode: 'AAD863-MR15', rank: 1 },
+    { itemCode: 'AAI030-MR3', rank: 2 },
+    { itemCode: 'AAH906-MR3', rank: 3 },
+    { itemCode: 'AAC795-RL1', rank: 4 },
+    { itemCode: 'AAE728-MR1', rank: 5 },
+    { itemCode: 'AAG733-MR3', rank: 6 },
+    { itemCode: 'AAD908-MR4', rank: 7 },
+    { itemCode: 'AAG535-MR1', rank: 8 },
+    { itemCode: 'AAG868-MR5', rank: 9 },
+    { itemCode: 'AAG615-MR1', rank: 10 },
+    { itemCode: 'AAG840-MR1', rank: 11 },
+    { itemCode: 'AAG573-MR1', rank: 12 },
+    { itemCode: 'AAD855-MR1', rank: 13 },
+    { itemCode: 'AAG861-MR2', rank: 14 },
+    { itemCode: 'AAG820-MR3', rank: 15 },
+    { itemCode: 'AAH843-MR1', rank: 16 },
+    { itemCode: 'AAG841-MR3', rank: 17 },
+    { itemCode: 'AAG822-MR4', rank: 18 },
+    { itemCode: 'AAG830-MR2', rank: 19 },
+    { itemCode: 'AAG620-MR1', rank: 20 },
+    { itemCode: 'AAE728-MR1', rank: 21 },
+    { itemCode: 'AAG555-MR2', rank: 22 },
+    { itemCode: 'AAG793-MR1', rank: 23 },
+    { itemCode: 'AAG842-MR4', rank: 24 },
+    { itemCode: 'AAG829-MR3', rank: 25 },
+    { itemCode: 'AAG538-MR2', rank: 26 },
+    { itemCode: 'AAG573-MR1', rank: 27 },
+    { itemCode: 'AAH584-MR2', rank: 28 },
+    { itemCode: 'AAH525-MR1', rank: 29 },
+    { itemCode: 'AAD953-MR9', rank: 30 },
+    { itemCode: 'AAD290-MR1', rank: 31 },
+    { itemCode: 'AAH256-MR1', rank: 32 },
+    { itemCode: 'AAJ467-MR3', rank: 33 },
+    { itemCode: 'AAG798-MR6', rank: 34 },
+    { itemCode: 'AAH275-MR1', rank: 35 },
+    { itemCode: 'AAG737-MR2', rank: 36 },
+    { itemCode: 'AAD290-MR7', rank: 37 },
+    { itemCode: 'AAG889-MR1', rank: 38 },
+    { itemCode: 'AAG589-MR2', rank: 39 },
+    { itemCode: 'AAG584-MR4', rank: 40 },
+    { itemCode: 'AAI021-RL1', rank: 41 },
+    { itemCode: 'AAI024-MR3', rank: 42 },
+    { itemCode: 'AAD908-MR2', rank: 43 },
+    { itemCode: 'AAH919-MR2', rank: 44 },
+    { itemCode: 'AAG543-MR1', rank: 45 },
+    { itemCode: 'AAH909-MR3', rank: 46 },
+    { itemCode: 'AAC318-MR4', rank: 47 },
+    { itemCode: 'AAH678-MR1', rank: 48 },
+    { itemCode: 'AAC784-MR1', rank: 49 },
+    { itemCode: 'AAG699-MR1', rank: 50 },
+    { itemCode: 'AAG948-MR2', rank: 51 },
+    { itemCode: 'AAG685-MR1', rank: 52 },
+    { itemCode: 'AAG834-MR1', rank: 53 },
+    { itemCode: 'AAG574-MR1', rank: 54 },
+    { itemCode: 'AAG773-MR4', rank: 55 },
+    { itemCode: 'AAG844-MR2', rank: 56 },
+    { itemCode: 'AAG820-MR3', rank: 57 },
+    { itemCode: 'AAG790-MR8', rank: 58 },
+    { itemCode: 'AAG529-MR2', rank: 59 },
+    { itemCode: 'AAG570-MR6', rank: 60 },
+    { itemCode: 'AAG865-MR1', rank: 61 },
+    { itemCode: 'AAB975-MR1', rank: 62 },
+    { itemCode: 'AAG557-MR2', rank: 63 },
+    { itemCode: 'AAD934-MR1', rank: 64 },
+    { itemCode: 'AAG815-MR9', rank: 65 },
+    { itemCode: 'AAG806-MR1', rank: 66 },
+    { itemCode: 'AAH904-MR2', rank: 67 },
+    { itemCode: 'AAG555-MR2', rank: 68 }
+];
+
+const HIGH_RUNNER_RANKS = HIGH_RUNNERS.reduce((acc, { itemCode, rank }) => {
+    if (!(itemCode in acc)) acc[itemCode] = rank;
+    return acc;
+}, {});
+
 // --- Helper for CSV Parsing ---
 const parseCSV = (csvText) => {
     const lines = csvText.split(/\r?\n/);
@@ -767,10 +843,16 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
         >
             <div className="flex justify-between items-start mb-1.5">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border 
+                    <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border
                         ${isActive ? 'bg-indigo-500 text-white border-transparent' : isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                         {node.type}
                     </span>
+                    {(node.type === 'FG' || node.type === 'DC') && HIGH_RUNNER_RANKS[node.itemCode] && (
+                        <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full border
+                            ${isDarkMode ? 'bg-amber-500/10 border-amber-400/40 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
+                            HR{HIGH_RUNNER_RANKS[node.itemCode]}
+                        </span>
+                    )}
                     <div className="flex flex-col min-w-0">
                          <div className={`text-xs font-bold truncate max-w-[160px] ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`} title={node.id}>{node.id}</div>
                          <div className="flex items-center text-[10px] opacity-60">
@@ -801,7 +883,7 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
     );
 });
 
-const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSearchTerm, setSort, sortValue, isActiveCol, isDarkMode, children }) => (
+const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSearchTerm, setSort, sortValue, isActiveCol, isDarkMode, children, allowHighRunner = false, highRunnerActive = false, onToggleHighRunner }) => (
     <div className={`flex flex-col h-full min-h-0 border-r ${isDarkMode ? 'border-slate-800 bg-slate-900/20' : 'border-slate-200/60 bg-slate-50/30'} ${isActiveCol ? (isDarkMode ? 'bg-indigo-900/10' : 'bg-indigo-50/30') : ''} min-w-[300px] flex-1`}>
         <div className={`p-4 border-b backdrop-blur-sm sticky top-0 z-10 ${isDarkMode ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200/60 bg-white/80'}`}>
             <div className="flex items-center justify-between mb-3">
@@ -810,6 +892,18 @@ const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSea
                     {title} <span className={`px-1.5 py-0.5 rounded text-[10px] ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>{count}</span>
                 </h3>
                 <div className="flex gap-1">
+                    {allowHighRunner && (
+                        <button
+                            onClick={onToggleHighRunner}
+                            className={`p-1.5 rounded transition-colors flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide border
+                                ${highRunnerActive
+                                    ? isDarkMode ? 'bg-amber-500/20 text-amber-200 border-amber-400/50' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : isDarkMode ? 'text-slate-400 border-slate-700 hover:border-amber-400/50 hover:text-amber-200' : 'text-slate-500 border-slate-200 hover:text-amber-700 hover:border-amber-300'}`}
+                            title="Filter High Runners"
+                        >
+                            HR
+                        </button>
+                    )}
                     <button onClick={() => setSort('alpha')} className={`p-1.5 rounded transition-colors ${sortValue === 'alpha' ? (isDarkMode ? 'bg-slate-800 text-indigo-400' : 'bg-white shadow-sm text-indigo-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Alpha"><ArrowUpDown className="w-3.5 h-3.5" /></button>
                     <button onClick={() => setSort('invAsc')} className={`p-1.5 rounded transition-colors ${sortValue === 'invAsc' ? (isDarkMode ? 'bg-slate-800 text-indigo-400' : 'bg-white shadow-sm text-indigo-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Inv (Low-to-High)"><Activity className="w-3.5 h-3.5" /></button>
                 </div>
@@ -852,10 +946,10 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
         setMapFocus(null);
         setFilters({
             rmSearch: "", fgSearch: "", dcSearch: "",
-            rmClass: "All", fgPlant: "All", dcOrg: "All"
+            rmClass: "All", fgPlant: "All", dcOrg: "All", highRunnerOnly: false
         });
         setSortRM('alpha'); setSortFG('alpha'); setSortDC('alpha');
-        onNodeSelect(null); 
+        onNodeSelect(null);
     }, [onNodeSelect, setFilters]);
 
     // Expose reset to parent
@@ -1041,6 +1135,11 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
         if (filters.fgSearch) targetFGKeys = targetFGKeys.filter(k => k.toLowerCase().includes(filters.fgSearch.toLowerCase()));
         if (filters.dcSearch) targetDCKeys = targetDCKeys.filter(k => k.toLowerCase().includes(filters.dcSearch.toLowerCase()));
 
+        if (filters.highRunnerOnly) {
+            targetFGKeys = targetFGKeys.filter(k => HIGH_RUNNER_RANKS[k.split('|')[0]]);
+            targetDCKeys = targetDCKeys.filter(k => HIGH_RUNNER_RANKS[k.split('|')[0]]);
+        }
+
         let rmNodes = targetRMKeys.map(k => getNodeStats(k, 'RM')).filter(Boolean);
         let fgNodes = targetFGKeys.map(k => getNodeStats(k, 'FG')).filter(Boolean);
         let dcNodes = targetDCKeys.map(k => getNodeStats(k, 'DC')).filter(Boolean);
@@ -1055,15 +1154,17 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             dcNodes = dcNodes.filter(n => n.invOrg === filters.dcOrg);
         }
 
-        const sorter = (a, b, method) => {
+        const getRank = (id) => HIGH_RUNNER_RANKS[id] ?? Number.POSITIVE_INFINITY;
+        const sorter = (a, b, method, type) => {
+            if (filters.highRunnerOnly && (type === 'FG' || type === 'DC')) return getRank(a.id) - getRank(b.id);
             if (method === 'alpha') return a.id.localeCompare(b.id);
             if (method === 'invAsc') return a.currentInv - b.currentInv;
             return 0;
         };
-        
-        rmNodes.sort((a, b) => sorter(a, b, sortRM));
-        fgNodes.sort((a, b) => sorter(a, b, sortFG));
-        dcNodes.sort((a, b) => sorter(a, b, sortDC));
+
+        rmNodes.sort((a, b) => sorter(a, b, sortRM, 'RM'));
+        fgNodes.sort((a, b) => sorter(a, b, sortFG, 'FG'));
+        dcNodes.sort((a, b) => sorter(a, b, sortDC, 'DC'));
 
         const wrapNode = (n) => ({
             id: n.id, 
@@ -1127,10 +1228,10 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
 
             {/* FG Column - Conditionally Rendered */}
             {showFG && (
-                <RenderColumn 
-                    title="Finished Goods (Plant)" 
-                    count={fgList.length} 
-                    items={fgList} 
+                <RenderColumn
+                    title="Finished Goods (Plant)"
+                    count={fgList.length}
+                    items={fgList}
                     type="FG"
                     searchTerm={filters.fgSearch}
                     setSearchTerm={(val) => setFilters(prev => ({...prev, fgSearch: val}))}
@@ -1138,10 +1239,13 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
                     setSort={setSortFG}
                     isActiveCol={mapFocus && mapFocus.type === 'FG'}
                     isDarkMode={isDarkMode}
+                    allowHighRunner={true}
+                    highRunnerActive={filters.highRunnerOnly}
+                    onToggleHighRunner={() => setFilters(prev => ({ ...prev, highRunnerOnly: !prev.highRunnerOnly }))}
                 >
                     <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
                         {['All', ...PLANT_ORGS].map(org => (
-                            <button 
+                            <button
                                 key={org}
                                 onClick={() => setFilters(prev => ({...prev, fgPlant: org}))}
                                 className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
@@ -1157,10 +1261,10 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             )}
 
             {/* DC Column */}
-            <RenderColumn 
-                title="Distribution Centers" 
-                count={dcList.length} 
-                items={dcList} 
+            <RenderColumn
+                title="Distribution Centers"
+                count={dcList.length}
+                items={dcList}
                 type="DC"
                 searchTerm={filters.dcSearch}
                 setSearchTerm={(val) => setFilters(prev => ({...prev, dcSearch: val}))}
@@ -1168,10 +1272,13 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
                 setSort={setSortDC}
                 isActiveCol={mapFocus && mapFocus.type === 'DC'}
                 isDarkMode={isDarkMode}
+                allowHighRunner={true}
+                highRunnerActive={filters.highRunnerOnly}
+                onToggleHighRunner={() => setFilters(prev => ({ ...prev, highRunnerOnly: !prev.highRunnerOnly }))}
             >
                 <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
                     {['All', ...DC_ORGS].map(org => (
-                        <button 
+                        <button
                             key={org}
                             onClick={() => setFilters(prev => ({...prev, dcOrg: org}))}
                             className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
@@ -1204,7 +1311,8 @@ export default function SupplyChainDashboard() {
     
     const [listFilters, setListFilters] = useState({
         rmSearch: "", fgSearch: "", dcSearch: "",
-        rmClass: "All", fgPlant: "All", dcOrg: "All"
+        rmClass: "All", fgPlant: "All", dcOrg: "All",
+        highRunnerOnly: false
     });
 
     const [isLeadTimeMode, setIsLeadTimeMode] = useState(false);
@@ -1329,9 +1437,11 @@ export default function SupplyChainDashboard() {
                 if (!search(listFilters.rmSearch, row['Item Code'])) return false;
                 if (listFilters.rmClass !== 'All' && (!row['Item Class'] || !row['Item Class'].includes(listFilters.rmClass))) return false;
             } else if (type === 'FG') {
+                if (listFilters.highRunnerOnly && !HIGH_RUNNER_RANKS[row['Item Code']]) return false;
                 if (!search(listFilters.fgSearch, row['Item Code'])) return false;
                 if (listFilters.fgPlant !== 'All' && row['Inv Org'] !== listFilters.fgPlant) return false;
             } else if (type === 'DC') {
+                if (listFilters.highRunnerOnly && !HIGH_RUNNER_RANKS[row['Item Code']]) return false;
                 if (!search(listFilters.dcSearch, row['Item Code'])) return false;
                 if (listFilters.dcOrg !== 'All' && row['Inv Org'] !== listFilters.dcOrg) return false;
             }
