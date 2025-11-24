@@ -1208,9 +1208,77 @@ export default function SupplyChainDashboard() {
         }
     };
 
-    // Filter rawData based on listFilters for the Graph View
+    // 1. Index BOM (Moved logic to Dashboard to share with Graph filtering)
+    const bomIndex = useMemo(() => {
+        const p2c = {}; 
+        const c2p = {}; 
+        
+        bomData.forEach(b => {
+            const parentKey = `${b.parent}|${b.plant}`;
+            const childKey = `${b.child}|${b.plant}`;
+
+            if (!p2c[parentKey]) p2c[parentKey] = new Set();
+            p2c[parentKey].add(childKey);
+
+            if (!c2p[childKey]) c2p[childKey] = new Set();
+            c2p[childKey].add(parentKey);
+        });
+        return { p2c, c2p };
+    }, [bomData]);
+
+    // Filter rawData based on listFilters AND Selection for the Graph View
     const filteredGraphData = useMemo(() => {
-        return rawData.filter(row => {
+        // First, filter by Selection Context (Connectivity)
+        let data = rawData;
+        
+        if (selectedItem) {
+            const focusKey = `${selectedItem.itemCode}|${selectedItem.invOrg}`;
+            const allowedKeys = new Set([focusKey]);
+
+            if (selectedItem.type === 'FG' || (PLANT_ORGS.includes(selectedItem.invOrg) && selectedItem.type !== 'RM')) {
+                // FG Logic: Show Ingredients + Related DCs
+                const ingredients = bomIndex.p2c[focusKey];
+                if (ingredients) ingredients.forEach(k => allowedKeys.add(k));
+                
+                // Find DCs with same item code
+                data.forEach(row => {
+                     if (DC_ORGS.includes(row['Inv Org']) && row['Item Code'] === selectedItem.itemCode) {
+                         allowedKeys.add(`${row['Item Code']}|${row['Inv Org']}`);
+                     }
+                });
+            } else if (selectedItem.type === 'RM') {
+                // RM Logic: Show Consumers + DCs of Consumers
+                const consumers = bomIndex.c2p[focusKey];
+                const consumerCodes = new Set();
+                if (consumers) {
+                    consumers.forEach(k => {
+                        allowedKeys.add(k);
+                        consumerCodes.add(k.split('|')[0]);
+                    });
+                }
+                // Find DCs for these consumers
+                data.forEach(row => {
+                     if (DC_ORGS.includes(row['Inv Org']) && consumerCodes.has(row['Item Code'])) {
+                         allowedKeys.add(`${row['Item Code']}|${row['Inv Org']}`);
+                     }
+                });
+            } else if (selectedItem.type === 'DC') {
+                // DC Logic: Show Source FGs + Ingredients of those FGs
+                 data.forEach(row => {
+                     if (PLANT_ORGS.includes(row['Inv Org']) && row['Item Code'] === selectedItem.itemCode) {
+                         const fgKey = `${row['Item Code']}|${row['Inv Org']}`;
+                         allowedKeys.add(fgKey);
+                         const ingredients = bomIndex.p2c[fgKey];
+                         if (ingredients) ingredients.forEach(i => allowedKeys.add(i));
+                     }
+                 });
+            }
+
+            data = data.filter(row => allowedKeys.has(`${row['Item Code']}|${row['Inv Org']}`));
+        }
+
+        // Second, apply the Text/Dropdown Filters
+        return data.filter(row => {
             let type = 'RM';
             if (PLANT_ORGS.includes(row['Inv Org'])) type = 'FG';
             else if (DC_ORGS.includes(row['Inv Org'])) type = 'DC';
@@ -1230,7 +1298,7 @@ export default function SupplyChainDashboard() {
             }
             return true;
         });
-    }, [rawData, listFilters]);
+    }, [rawData, listFilters, selectedItem, bomIndex]);
 
     // --- Fetch from Google Sheets ---
     useEffect(() => {
