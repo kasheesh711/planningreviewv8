@@ -817,32 +817,24 @@ const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSea
 
 
 // --- Supply Chain Network Map Component (The Dashboard View) ---
-const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryData, dateRange, onOpenDetails, onNodeSelect, isDarkMode }, ref) => {
+const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent, bomData, inventoryData, dateRange, onOpenDetails, onNodeSelect, isDarkMode }, ref) => {
     const [mapFocus, setMapFocus] = useState(null); 
-    
-    // List States
-    const [searchTermRM, setSearchTermRM] = useState("");
-    const [searchTermFG, setSearchTermFG] = useState("");
-    const [searchTermDC, setSearchTermDC] = useState(""); 
     
     // Sort States
     const [sortRM, setSortRM] = useState("alpha"); 
     const [sortFG, setSortFG] = useState("alpha");
     const [sortDC, setSortDC] = useState("alpha"); 
 
-    // Filters
-    const [rmClassFilter, setRmClassFilter] = useState('All');
-    const [fgPlantFilter, setFgPlantFilter] = useState('All'); 
-    const [dcFilter, setDcFilter] = useState('All'); 
-
     // Reset Internal Map State
     const handleReset = useCallback(() => {
         setMapFocus(null);
-        setSearchTermRM(""); setSearchTermFG(""); setSearchTermDC("");
-        setRmClassFilter('All'); setFgPlantFilter('All'); setDcFilter('All');
+        setFilters({
+            rmSearch: "", fgSearch: "", dcSearch: "",
+            rmClass: "All", fgPlant: "All", dcOrg: "All"
+        });
         setSortRM('alpha'); setSortFG('alpha'); setSortDC('alpha');
         onNodeSelect(null); 
-    }, [onNodeSelect]);
+    }, [onNodeSelect, setFilters]);
 
     // Expose reset to parent
     useImperativeHandle(ref, () => ({
@@ -1011,22 +1003,22 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
             }
         }
 
-        if (searchTermRM) targetRMKeys = targetRMKeys.filter(k => k.toLowerCase().includes(searchTermRM.toLowerCase()));
-        if (searchTermFG) targetFGKeys = targetFGKeys.filter(k => k.toLowerCase().includes(searchTermFG.toLowerCase()));
-        if (searchTermDC) targetDCKeys = targetDCKeys.filter(k => k.toLowerCase().includes(searchTermDC.toLowerCase()));
+        if (filters.rmSearch) targetRMKeys = targetRMKeys.filter(k => k.toLowerCase().includes(filters.rmSearch.toLowerCase()));
+        if (filters.fgSearch) targetFGKeys = targetFGKeys.filter(k => k.toLowerCase().includes(filters.fgSearch.toLowerCase()));
+        if (filters.dcSearch) targetDCKeys = targetDCKeys.filter(k => k.toLowerCase().includes(filters.dcSearch.toLowerCase()));
 
         let rmNodes = targetRMKeys.map(k => getNodeStats(k, 'RM')).filter(Boolean);
         let fgNodes = targetFGKeys.map(k => getNodeStats(k, 'FG')).filter(Boolean);
         let dcNodes = targetDCKeys.map(k => getNodeStats(k, 'DC')).filter(Boolean);
 
-        if (rmClassFilter !== 'All') {
-            rmNodes = rmNodes.filter(n => n.itemClass && n.itemClass.includes(rmClassFilter));
+        if (filters.rmClass !== 'All') {
+            rmNodes = rmNodes.filter(n => n.itemClass && n.itemClass.includes(filters.rmClass));
         }
-        if (fgPlantFilter !== 'All') {
-            fgNodes = fgNodes.filter(n => n.invOrg === fgPlantFilter);
+        if (filters.fgPlant !== 'All') {
+            fgNodes = fgNodes.filter(n => n.invOrg === filters.fgPlant);
         }
-        if (dcFilter !== 'All') {
-            dcNodes = dcNodes.filter(n => n.invOrg === dcFilter);
+        if (filters.dcOrg !== 'All') {
+            dcNodes = dcNodes.filter(n => n.invOrg === filters.dcOrg);
         }
 
         const sorter = (a, b, method) => {
@@ -1063,7 +1055,7 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
             dcList: dcNodes.map(wrapNode)
         };
 
-    }, [dataIndex, bomIndex, mapFocus, searchTermRM, searchTermFG, searchTermDC, sortRM, sortFG, sortDC, dateRange, getNodeStats, onOpenDetails, rmClassFilter, fgPlantFilter, dcFilter, onNodeSelect, isDarkMode]);
+    }, [dataIndex, bomIndex, mapFocus, filters, sortRM, sortFG, sortDC, dateRange, getNodeStats, onOpenDetails, onNodeSelect, isDarkMode]);
 
     return (
         // Changed to overflow-x-auto to allow horizontal scrolling if columns overflow
@@ -1076,8 +1068,8 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                 count={rmList.length} 
                 items={rmList} 
                 type="RM"
-                searchTerm={searchTermRM}
-                setSearchTerm={setSearchTermRM}
+                searchTerm={filters.rmSearch}
+                setSearchTerm={(val) => setFilters(prev => ({...prev, rmSearch: val}))}
                 sortValue={sortRM}
                 setSort={setSortRM}
                 isActiveCol={mapFocus && mapFocus.type === 'RM'}
@@ -1087,9 +1079,9 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                     {['All', 'FA', 'AD', 'LI'].map(cls => (
                         <button 
                             key={cls}
-                            onClick={() => setRmClassFilter(cls)}
+                            onClick={() => setFilters(prev => ({...prev, rmClass: cls}))}
                             className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
-                                ${rmClassFilter === cls 
+                                ${filters.rmClass === cls 
                                     ? 'bg-indigo-500 border-indigo-500 text-white shadow-md shadow-indigo-500/30' 
                                     : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
                         >
@@ -1105,8 +1097,8 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                 count={fgList.length} 
                 items={fgList} 
                 type="FG"
-                searchTerm={searchTermFG}
-                setSearchTerm={setSearchTermFG}
+                searchTerm={filters.fgSearch}
+                setSearchTerm={(val) => setFilters(prev => ({...prev, fgSearch: val}))}
                 sortValue={sortFG}
                 setSort={setSortFG}
                 isActiveCol={mapFocus && mapFocus.type === 'FG'}
@@ -1116,9 +1108,9 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                     {['All', ...PLANT_ORGS].map(org => (
                         <button 
                             key={org}
-                            onClick={() => setFgPlantFilter(org)}
+                            onClick={() => setFilters(prev => ({...prev, fgPlant: org}))}
                             className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
-                                ${fgPlantFilter === org 
+                                ${filters.fgPlant === org 
                                     ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30' 
                                     : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
                         >
@@ -1134,8 +1126,8 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                 count={dcList.length} 
                 items={dcList} 
                 type="DC"
-                searchTerm={searchTermDC}
-                setSearchTerm={setSearchTermDC}
+                searchTerm={filters.dcSearch}
+                setSearchTerm={(val) => setFilters(prev => ({...prev, dcSearch: val}))}
                 sortValue={sortDC}
                 setSort={setSortDC}
                 isActiveCol={mapFocus && mapFocus.type === 'DC'}
@@ -1145,9 +1137,9 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                     {['All', ...DC_ORGS].map(org => (
                         <button 
                             key={org}
-                            onClick={() => setDcFilter(org)}
+                            onClick={() => setFilters(prev => ({...prev, dcOrg: org}))}
                             className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
-                                ${dcFilter === org 
+                                ${filters.dcOrg === org 
                                     ? 'bg-blue-500 border-blue-500 text-white shadow-md shadow-blue-500/30' 
                                     : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
                         >
@@ -1174,6 +1166,11 @@ export default function SupplyChainDashboard() {
         metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] 
     });
     
+    const [listFilters, setListFilters] = useState({
+        rmSearch: "", fgSearch: "", dcSearch: "",
+        rmClass: "All", fgPlant: "All", dcOrg: "All"
+    });
+
     const [isLeadTimeMode, setIsLeadTimeMode] = useState(false);
     const [selectedItem, setSelectedItem] = useState(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -1210,6 +1207,30 @@ export default function SupplyChainDashboard() {
             });
         }
     };
+
+    // Filter rawData based on listFilters for the Graph View
+    const filteredGraphData = useMemo(() => {
+        return rawData.filter(row => {
+            let type = 'RM';
+            if (PLANT_ORGS.includes(row['Inv Org'])) type = 'FG';
+            else if (DC_ORGS.includes(row['Inv Org'])) type = 'DC';
+            else type = row.Type || 'RM';
+
+            const search = (term, val) => !term || val.toLowerCase().includes(term.toLowerCase());
+
+            if (type === 'RM') {
+                if (!search(listFilters.rmSearch, row['Item Code'])) return false;
+                if (listFilters.rmClass !== 'All' && (!row['Item Class'] || !row['Item Class'].includes(listFilters.rmClass))) return false;
+            } else if (type === 'FG') {
+                if (!search(listFilters.fgSearch, row['Item Code'])) return false;
+                if (listFilters.fgPlant !== 'All' && row['Inv Org'] !== listFilters.fgPlant) return false;
+            } else if (type === 'DC') {
+                if (!search(listFilters.dcSearch, row['Item Code'])) return false;
+                if (listFilters.dcOrg !== 'All' && row['Inv Org'] !== listFilters.dcOrg) return false;
+            }
+            return true;
+        });
+    }, [rawData, listFilters]);
 
     // --- Fetch from Google Sheets ---
     useEffect(() => {
@@ -1623,6 +1644,8 @@ export default function SupplyChainDashboard() {
                                 <div className="flex-1 relative overflow-hidden">
                                      <SupplyChainMap 
                                         ref={mapRef}
+                                        filters={listFilters}
+                                        setFilters={setListFilters}
                                         selectedItemFromParent={selectedItem} 
                                         bomData={bomData} 
                                         inventoryData={rawData} 
@@ -1636,7 +1659,7 @@ export default function SupplyChainDashboard() {
 
                             {/* Network Visualization Pane (NEW) */}
                             <div className={`h-[500px] shrink-0 rounded-2xl shadow-sm border flex flex-col overflow-hidden transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
-                                <NetworkGraphView rawData={rawData} bomData={bomData} isDarkMode={isDarkMode} selectedNode={selectedItem} />
+                                <NetworkGraphView rawData={filteredGraphData} bomData={bomData} isDarkMode={isDarkMode} selectedNode={selectedItem} />
                             </div>
 
                             {/* RISK MONITOR (Bottom) */}
