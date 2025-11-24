@@ -3,7 +3,7 @@ import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, ComposedChart
 } from 'recharts';
 import {
-    Upload, Filter, Package, Calendar,XHTn ChevronDown, Search, ToggleLeft, ToggleRight, AlertTriangle, X, Table, SlidersHorizontal, ArrowUpDown, CheckSquare, Square, Activity, Layers, Factory, Network, FileSpreadsheet,TZ ArrowRight, Warehouse, Box, ArrowLeftRight, MapPin, RefreshCw, RotateCcw, PanelLeft, Sun, Moon, MoreHorizontal, Share2, LayoutDashboard, Clock, Move, MousePointer2, Plus, Minus, Maximize
+    Upload, Filter, Package, Calendar, ChevronDown, Search, ToggleLeft, ToggleRight, AlertTriangle, X, Table, SlidersHorizontal, ArrowUpDown, CheckSquare, Square, Activity, Layers, Factory, Network, FileSpreadsheet, ArrowRight, Warehouse, Box, ArrowLeftRight, MapPin, RefreshCw, RotateCcw, PanelLeft, Sun, Moon, MoreHorizontal, Share2, LayoutDashboard, Clock, Move, MousePointer2, Plus, Minus, Maximize
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -501,7 +501,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
     };
 
     return (
-        <div className={`flex flex-col h-full rounded-2xlHX border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+        <div className={`flex flex-col h-full rounded-2xl border shadow-sm overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
             {/* Controls Header */}
             <div className={`p-3 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
                  <div className="flex items-center gap-4">
@@ -781,7 +781,7 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
 
 const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSearchTerm, setSort, sortValue, isActiveCol, isDarkMode, children }) => (
     <div className={`flex flex-col h-full min-h-0 border-r ${isDarkMode ? 'border-slate-800 bg-slate-900/20' : 'border-slate-200/60 bg-slate-50/30'} ${isActiveCol ? (isDarkMode ? 'bg-indigo-900/10' : 'bg-indigo-50/30') : ''} min-w-[300px] flex-1`}>
-        <div className={`p-4 border-b backdrop-blur-sm stickyWZ top-0 z-10 ${isDarkMode ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200/60 bg-white/80'}`}>
+        <div className={`p-4 border-b backdrop-blur-sm sticky top-0 z-10 ${isDarkMode ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200/60 bg-white/80'}`}>
             <div className="flex items-center justify-between mb-3">
                 <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     {type === 'RM' ? <Box className="w-3.5 h-3.5" /> : (type === 'FG' ? <Factory className="w-3.5 h-3.5" /> : <Warehouse className="w-3.5 h-3.5" />)}
@@ -1083,7 +1083,7 @@ const SupplyChainMap = forwardRef(({ selectedItemFromParent, bomData, inventoryD
                 isActiveCol={mapFocus && mapFocus.type === 'RM'}
                 isDarkMode={isDarkMode}
             >
-                <div className="flex gap-1.5 mt-2 overflow-x-autoQl pb-1 scrollbar-none">
+                <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
                     {['All', 'FA', 'AD', 'LI'].map(cls => (
                         <button 
                             key={cls}
@@ -1273,7 +1273,7 @@ export default function SupplyChainDashboard() {
         const reader = new FileReader();
         reader.onload = (e) => {
             const text = e.target.result;
-            constWX rawParsed = parseCSV(text);
+            const rawParsed = parseCSV(text);
             const processedBom = rawParsed.map(row => ({
                 plant: row['Plant'] || row['Plant '],
                 parent: row['Parent'] || row['Parent Item'] || row['Parent Item '],
@@ -1500,7 +1500,7 @@ export default function SupplyChainDashboard() {
         setIsDetailOpen(false);
         setGanttSort('itemCode');
         const validTimes = [];
-        for (let i = 0; i <HJ rawData.length; i++) {
+        for (let i = 0; i < rawData.length; i++) {
             const t = rawData[i]._dateObj ? rawData[i]._dateObj.getTime() : NaN;
             if (!isNaN(t)) validTimes.push(t);
         }
