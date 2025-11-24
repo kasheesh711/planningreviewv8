@@ -3,7 +3,7 @@ import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, ComposedChart
 } from 'recharts';
 import {
-    Upload, Filter, Package, Calendar, ChevronDown, Search, ToggleLeft, ToggleRight, AlertTriangle, X, Table, SlidersHorizontal, ArrowUpDown, CheckSquare, Square, Activity, Layers, Factory, Network, FileSpreadsheet, ArrowRight, Warehouse, Box, ArrowLeftRight, MapPin, RefreshCw, RotateCcw, PanelLeft, Sun, Moon, MoreHorizontal, Share2, LayoutDashboard, Clock, Move, MousePointer2, Plus, Minus, Maximize
+    Upload, Filter, Package, Calendar, ChevronDown, Search, ToggleLeft, ToggleRight, AlertTriangle, X, Table, SlidersHorizontal, ArrowUpDown, CheckSquare, Square, Activity, Layers, Factory, Network, FileSpreadsheet, ArrowRight, Warehouse, Box, ArrowLeftRight, MapPin, RefreshCw, RotateCcw, PanelLeft, Sun, Moon, MoreHorizontal, Share2, LayoutDashboard, Clock, Move, MousePointer2, Plus, Minus, Maximize, Eye, EyeOff
 } from 'lucide-react';
 
 // --- CONFIGURATION ---
@@ -729,6 +729,27 @@ const WeeklyHealthIndicator = React.memo(({ data, isDarkMode }) => {
     );
 });
 
+const WeeklyAvailIndicator = React.memo(({ data, isDarkMode }) => {
+    if (!data || data.length === 0) return null;
+
+    return (
+        <div className="flex items-center gap-0.5 mt-1">
+            {data.map((w, idx) => {
+                let colorClass = isDarkMode ? 'bg-slate-800' : 'bg-slate-200';
+                if (w.val > 0) colorClass = 'bg-emerald-500';
+                else if (w.val < 0) colorClass = 'bg-rose-500';
+                else colorClass = isDarkMode ? 'bg-slate-700' : 'bg-slate-300';
+                
+                return (
+                    <div key={idx} className="group relative flex-1 h-1 first:rounded-l-sm last:rounded-r-sm bg-opacity-20 overflow-hidden">
+                        <div className={`h-full w-full ${colorClass} shadow-sm`} title={`Week ${w.week}: ${w.val?.toLocaleString()}`}></div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+});
+
 const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMode }) => {
     const baseClasses = isDarkMode 
         ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800 hover:border-slate-600" 
@@ -775,6 +796,7 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
             </div>
 
             <WeeklyHealthIndicator data={node.weeklyHealth} isDarkMode={isDarkMode} />
+            {node.type === 'DC' && node.weeklyAvail && <WeeklyAvailIndicator data={node.weeklyAvail} isDarkMode={isDarkMode} />}
         </div>
     );
 });
@@ -817,7 +839,7 @@ const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSea
 
 
 // --- Supply Chain Network Map Component (The Dashboard View) ---
-const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent, bomData, inventoryData, dateRange, onOpenDetails, onNodeSelect, isDarkMode }, ref) => {
+const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent, bomData, inventoryData, dateRange, onOpenDetails, onNodeSelect, isDarkMode, showFG }, ref) => {
     const [mapFocus, setMapFocus] = useState(null); 
     
     // Sort States
@@ -918,17 +940,19 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
 
         const weeklyMap = {};
         validRecords.forEach(r => {
-            if (r.Metric === 'Tot.Inventory (Forecast)' || r.Metric === 'Tot.Target Inv.') {
-                const weekNum = Math.floor(r._dateObj.getTime() / (7 * 24 * 60 * 60 * 1000));
-                if (!weeklyMap[weekNum]) weeklyMap[weekNum] = { inv: 0, target: 0, count: 0 };
-                
-                if (r.Metric === 'Tot.Inventory (Forecast)') {
-                    weeklyMap[weekNum].inv += r.Value;
-                    weeklyMap[weekNum].count++;
-                }
-                if (r.Metric === 'Tot.Target Inv.') {
-                    weeklyMap[weekNum].target += r.Value;
-                }
+            const weekNum = Math.floor(r._dateObj.getTime() / (7 * 24 * 60 * 60 * 1000));
+            if (!weeklyMap[weekNum]) weeklyMap[weekNum] = { inv: 0, target: 0, count: 0, avail: 0, availCount: 0 };
+
+            if (r.Metric === 'Tot.Inventory (Forecast)') {
+                weeklyMap[weekNum].inv += r.Value;
+                weeklyMap[weekNum].count++;
+            }
+            if (r.Metric === 'Tot.Target Inv.') {
+                weeklyMap[weekNum].target += r.Value;
+            }
+            if (type === 'DC' && r.Metric.includes('Tot.Plan Avail')) {
+                weeklyMap[weekNum].avail += r.Value;
+                weeklyMap[weekNum].availCount++;
             }
         });
 
@@ -938,6 +962,15 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             const avgTarget = d.count ? d.target / d.count : 1;
             return { week: w, pct: avgTarget > 0 ? (avgInv / avgTarget) * 100 : 0 };
         });
+
+        let weeklyAvail = [];
+        if (type === 'DC') {
+            weeklyAvail = Object.keys(weeklyMap).sort().map(w => {
+                const d = weeklyMap[w];
+                const avgAvail = d.availCount ? d.avail / d.availCount : 0;
+                return { week: w, val: avgAvail };
+            });
+        }
 
         const invRows = validRecords.filter(r => r.Metric === 'Tot.Inventory (Forecast)');
         invRows.sort((a, b) => {
@@ -956,7 +989,8 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             type,
             status,
             currentInv,
-            weeklyHealth
+            weeklyHealth,
+            weeklyAvail
         };
     }, [dataIndex, dateRange]);
 
@@ -1091,34 +1125,36 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
                 </div>
             </RenderColumn>
 
-            {/* FG Column */}
-            <RenderColumn 
-                title="Finished Goods (Plant)" 
-                count={fgList.length} 
-                items={fgList} 
-                type="FG"
-                searchTerm={filters.fgSearch}
-                setSearchTerm={(val) => setFilters(prev => ({...prev, fgSearch: val}))}
-                sortValue={sortFG}
-                setSort={setSortFG}
-                isActiveCol={mapFocus && mapFocus.type === 'FG'}
-                isDarkMode={isDarkMode}
-            >
-                <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
-                    {['All', ...PLANT_ORGS].map(org => (
-                        <button 
-                            key={org}
-                            onClick={() => setFilters(prev => ({...prev, fgPlant: org}))}
-                            className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
-                                ${filters.fgPlant === org 
-                                    ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30' 
-                                    : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
-                        >
-                            {org}
-                        </button>
-                    ))}
-                </div>
-            </RenderColumn>
+            {/* FG Column - Conditionally Rendered */}
+            {showFG && (
+                <RenderColumn 
+                    title="Finished Goods (Plant)" 
+                    count={fgList.length} 
+                    items={fgList} 
+                    type="FG"
+                    searchTerm={filters.fgSearch}
+                    setSearchTerm={(val) => setFilters(prev => ({...prev, fgSearch: val}))}
+                    sortValue={sortFG}
+                    setSort={setSortFG}
+                    isActiveCol={mapFocus && mapFocus.type === 'FG'}
+                    isDarkMode={isDarkMode}
+                >
+                    <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1 scrollbar-none">
+                        {['All', ...PLANT_ORGS].map(org => (
+                            <button 
+                                key={org}
+                                onClick={() => setFilters(prev => ({...prev, fgPlant: org}))}
+                                className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
+                                    ${filters.fgPlant === org 
+                                        ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30' 
+                                        : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                            >
+                                {org}
+                            </button>
+                        ))}
+                    </div>
+                </RenderColumn>
+            )}
 
             {/* DC Column */}
             <RenderColumn 
@@ -1182,6 +1218,9 @@ export default function SupplyChainDashboard() {
     const [ganttSort, setGanttSort] = useState('itemCode');
     const [isLoading, setIsLoading] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(false);
+    
+    // State for FG Column Visibility
+    const [showFG, setShowFG] = useState(true);
     
     // Ref to control the map reset
     const mapRef = useRef(null);
@@ -1588,6 +1627,7 @@ export default function SupplyChainDashboard() {
         setSelectedItem(null);
         setIsDetailOpen(false);
         setGanttSort('itemCode');
+        setShowFG(true);
         const validTimes = [];
         for (let i = 0; i < rawData.length; i++) {
             const t = rawData[i]._dateObj ? rawData[i]._dateObj.getTime() : NaN;
@@ -1701,13 +1741,22 @@ export default function SupplyChainDashboard() {
                                         <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500"><Network className="w-5 h-5" /></div>
                                         <div><h2 className={`text-base font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Supply Chain Network</h2><p className="text-xs text-slate-500">Live Inventory Map</p></div>
                                     </div>
-                                    {/* Moved Reset Button Here */}
-                                    <button 
-                                        onClick={() => mapRef.current?.reset()}
-                                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}
-                                    >
-                                        <RotateCcw className="w-3.5 h-3.5" /> Reset
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => setShowFG(!showFG)}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}
+                                            title={showFG ? "Hide Plant Column" : "Show Plant Column"}
+                                        >
+                                            {showFG ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                            <span className="hidden sm:inline">{showFG ? 'Hide Plant' : 'Show Plant'}</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => mapRef.current?.reset()}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}
+                                        >
+                                            <RotateCcw className="w-3.5 h-3.5" /> Reset
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 relative overflow-hidden">
                                      <SupplyChainMap 
@@ -1721,6 +1770,7 @@ export default function SupplyChainDashboard() {
                                         onOpenDetails={onOpenDetailsCallback}
                                         onNodeSelect={onNodeSelectCallback}
                                         isDarkMode={isDarkMode}
+                                        showFG={showFG}
                                     />
                                 </div>
                             </div>
