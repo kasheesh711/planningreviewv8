@@ -63,6 +63,20 @@ const getLeadTimeWeeks = (invOrg) => {
     return 4;
 };
 
+const getInventoryColorClass = (val, targetVal, isDarkMode) => {
+    if (val === undefined || val === null || Number.isNaN(val)) return isDarkMode ? "text-slate-500" : "text-slate-400";
+    if (!targetVal) return val < 0
+        ? "text-red-500 font-bold bg-red-500/10"
+        : (isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium");
+
+    const ratio = (val / targetVal) * 100;
+    if (ratio > 120) return isDarkMode ? "text-blue-300 font-semibold bg-blue-500/10" : "text-blue-600 font-semibold bg-blue-50";
+    if (ratio >= 80) return isDarkMode ? "text-emerald-300 font-semibold bg-emerald-500/10" : "text-emerald-600 font-semibold bg-emerald-50";
+    if (ratio >= 30) return isDarkMode ? "text-amber-200 font-semibold bg-amber-500/10" : "text-amber-600 font-semibold bg-amber-50";
+    if (ratio > 0) return isDarkMode ? "text-orange-200 font-semibold bg-orange-500/10" : "text-orange-600 font-semibold bg-orange-50";
+    return "text-red-500 font-bold bg-red-500/10";
+};
+
 // --- Sample Data ---
 const SAMPLE_CSV = `Factory,Type,Item Code,Inv Org,Item Class,UOM,Strategy,Original Item String,Metric,Start,Date,Value
 SF,FG,AAG620-MR2,MYBGPM,MR,LM,MTS,AAG620-MR2/MYBGPM/MR/LM/MTS,Tot.Req.,0,11/19/2025,9910.16
@@ -714,14 +728,16 @@ const WeeklyHealthIndicator = React.memo(({ data, isDarkMode }) => {
     return (
         <div className="flex items-center gap-0.5 mt-2">
             {data.map((w, idx) => {
-                let colorClass = isDarkMode ? 'bg-slate-800' : 'bg-slate-200';
-                if (w.pct >= 100) colorClass = 'bg-emerald-500';
-                else if (w.pct > 0) colorClass = 'bg-amber-500';
-                else colorClass = 'bg-rose-500';
-                
+                const colorClass = getInventoryColorClass(w.val, w.target, isDarkMode);
+                const invVal = w.val ?? 0;
+                const targetVal = w.target;
+                const tooltip = targetVal !== undefined
+                    ? `Week ${w.week}: Min Inv ${invVal?.toLocaleString()} vs Target ${targetVal?.toLocaleString()}`
+                    : `Week ${w.week}: Min Inv ${invVal?.toLocaleString()}`;
+
                 return (
                     <div key={idx} className="group relative flex-1 h-1 first:rounded-l-sm last:rounded-r-sm bg-opacity-20 overflow-hidden">
-                        <div className={`h-full w-full ${colorClass} shadow-[0_0_4px_rgba(0,0,0,0.2)]`} title={`Week ${w.week}: ${w.pct.toFixed(0)}% Target`}></div>
+                        <div className={`h-full w-full ${colorClass} shadow-[0_0_4px_rgba(0,0,0,0.2)]`} title={tooltip}></div>
                     </div>
                 );
             })}
@@ -941,14 +957,15 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
         const weeklyMap = {};
         validRecords.forEach(r => {
             const weekNum = Math.floor(r._dateObj.getTime() / (7 * 24 * 60 * 60 * 1000));
-            if (!weeklyMap[weekNum]) weeklyMap[weekNum] = { inv: 0, target: 0, count: 0, avail: 0, availCount: 0 };
+            if (!weeklyMap[weekNum]) weeklyMap[weekNum] = { invByDate: {}, targetByDate: {}, avail: 0, availCount: 0 };
 
             if (r.Metric === 'Tot.Inventory (Forecast)') {
-                weeklyMap[weekNum].inv += r.Value;
-                weeklyMap[weekNum].count++;
+                const dateKey = r.Date;
+                weeklyMap[weekNum].invByDate[dateKey] = (weeklyMap[weekNum].invByDate[dateKey] || 0) + (r.Value || 0);
             }
             if (r.Metric === 'Tot.Target Inv.') {
-                weeklyMap[weekNum].target += r.Value;
+                const dateKey = r.Date;
+                weeklyMap[weekNum].targetByDate[dateKey] = (weeklyMap[weekNum].targetByDate[dateKey] || 0) + (r.Value || 0);
             }
             if (type === 'DC' && r.Metric.includes('Tot.Plan Avail')) {
                 weeklyMap[weekNum].avail += r.Value;
@@ -956,16 +973,25 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             }
         });
 
-        const weeklyHealth = Object.keys(weeklyMap).sort().map(w => {
+        const weeklyHealth = Object.keys(weeklyMap).sort((a, b) => a - b).map(w => {
             const d = weeklyMap[w];
-            const avgInv = d.count ? d.inv / d.count : 0;
-            const avgTarget = d.count ? d.target / d.count : 1;
-            return { week: w, pct: avgTarget > 0 ? (avgInv / avgTarget) * 100 : 0 };
+            let minInv = null;
+            let minInvDate = null;
+
+            Object.entries(d.invByDate).forEach(([dateKey, invVal]) => {
+                if (minInv === null || invVal < minInv) {
+                    minInv = invVal;
+                    minInvDate = dateKey;
+                }
+            });
+
+            const targetForMin = minInvDate ? d.targetByDate[minInvDate] : undefined;
+            return { week: w, val: minInv ?? 0, target: targetForMin };
         });
 
         let weeklyAvail = [];
         if (type === 'DC') {
-            weeklyAvail = Object.keys(weeklyMap).sort().map(w => {
+            weeklyAvail = Object.keys(weeklyMap).sort((a, b) => a - b).map(w => {
                 const d = weeklyMap[w];
                 const avgAvail = d.availCount ? d.avail / d.availCount : 0;
                 return { week: w, val: avgAvail };
@@ -1599,20 +1625,6 @@ export default function SupplyChainDashboard() {
         return { dates: sortedDates, metrics: sortedMetrics, values: valueMap };
     }, [selectedItem, rawData, dateRange]);
 
-    const getInventoryCellClass = (val, targetVal) => {
-        if (val === undefined || val === null || Number.isNaN(val)) return isDarkMode ? "text-slate-500" : "text-slate-400";
-        if (!targetVal) return val < 0
-            ? "text-red-500 font-bold bg-red-500/10"
-            : (isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium");
-
-        const ratio = (val / targetVal) * 100;
-        if (ratio > 120) return isDarkMode ? "text-blue-300 font-semibold bg-blue-500/10" : "text-blue-600 font-semibold bg-blue-50";
-        if (ratio >= 80) return isDarkMode ? "text-emerald-300 font-semibold bg-emerald-500/10" : "text-emerald-600 font-semibold bg-emerald-50";
-        if (ratio >= 30) return isDarkMode ? "text-amber-200 font-semibold bg-amber-500/10" : "text-amber-600 font-semibold bg-amber-50";
-        if (ratio > 0) return isDarkMode ? "text-orange-200 font-semibold bg-orange-500/10" : "text-orange-600 font-semibold bg-orange-50";
-        return "text-red-500 font-bold bg-red-500/10";
-    };
-
     const activeMetrics = useMemo(() => {
         if (filters.metric.includes('All')) return Array.from(new Set(filteredData.map(d => d.Metric)));
         return filters.metric;
@@ -1931,7 +1943,7 @@ export default function SupplyChainDashboard() {
 
                                                 if (metric === 'Tot.Inventory (Forecast)') {
                                                     const targetVal = selectedItemData.values['Tot.Target Inv.']?.[dateStr];
-                                                    cellClass = getInventoryCellClass(val, targetVal);
+                                                    cellClass = getInventoryColorClass(val, targetVal, isDarkMode);
                                                 } else if (val > 0) {
                                                     cellClass = isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium";
                                                 }
