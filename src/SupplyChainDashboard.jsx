@@ -806,9 +806,13 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
             
             <div className="flex items-baseline justify-between mt-1">
                 <div className={`text-[10px] font-mono ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-                    Start Inv: <span className={node.currentInv < 0 ? "text-rose-500 font-bold" : ""}>{node.currentInv?.toLocaleString() || 0}</span>
+                    {node.missingInventory ? (
+                        <span className="text-amber-500 font-semibold">Item not found in today&apos;s data</span>
+                    ) : (
+                        <>Start Inv: <span className={node.currentInv < 0 ? "text-rose-500 font-bold" : ""}>{node.currentInv?.toLocaleString() || 0}</span></>
+                    )}
                 </div>
-                {node.status === 'Critical' && <div className="animate-pulse"><AlertTriangle className="w-3.5 h-3.5 text-rose-500" /></div>}
+                {node.status === 'Critical' && !node.missingInventory && <div className="animate-pulse"><AlertTriangle className="w-3.5 h-3.5 text-rose-500" /></div>}
             </div>
 
             <WeeklyHealthIndicator data={node.weeklyHealth} isDarkMode={isDarkMode} />
@@ -898,24 +902,39 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
 
     // 1. Index Data
     const dataIndex = useMemo(() => {
-        const idx = {}; 
+        const idx = {};
         const rmKeys = new Set();
         const fgKeys = new Set();
         const dcKeys = new Set();
+
+        const registerKey = (key, type) => {
+            if (!idx[key]) idx[key] = [];
+            if (type === 'RM') rmKeys.add(key);
+            else if (type === 'FG') fgKeys.add(key);
+            else if (type === 'DC') dcKeys.add(key);
+        };
 
         inventoryData.forEach(row => {
             const key = `${row['Item Code']}|${row['Inv Org']}`;
             if (!idx[key]) idx[key] = [];
             idx[key].push(row);
-            
-            if (row.Type === 'RM') rmKeys.add(key);
+
+            if (row.Type === 'RM') registerKey(key, 'RM');
             else if (row.Type === 'FG') {
-                if (PLANT_ORGS.includes(row['Inv Org'])) fgKeys.add(key);
-                else if (DC_ORGS.includes(row['Inv Org'])) dcKeys.add(key);
+                if (PLANT_ORGS.includes(row['Inv Org'])) registerKey(key, 'FG');
+                else if (DC_ORGS.includes(row['Inv Org'])) registerKey(key, 'DC');
             }
         });
+
+        bomData.forEach(b => {
+            const parentKey = `${b.parent}|${b.plant}`;
+            const childKey = `${b.child}|${b.plant}`;
+            registerKey(parentKey, 'FG');
+            registerKey(childKey, 'RM');
+        });
+
         return { index: idx, rmKeys: Array.from(rmKeys), fgKeys: Array.from(fgKeys), dcKeys: Array.from(dcKeys) };
-    }, [inventoryData]);
+    }, [inventoryData, bomData]);
 
     // 2. Index BOM
     const bomIndex = useMemo(() => {
@@ -941,13 +960,28 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
 
     // 3. Get Stats
     const getNodeStats = useCallback((key, type) => {
-        const records = dataIndex.index[key];
-        if (!records) return null;
+        const records = dataIndex.index[key] || [];
+        const [fallbackItemCode, fallbackInvOrg] = key.split('|');
+
+        if (!records.length) {
+            return {
+                id: fallbackItemCode,
+                itemCode: fallbackItemCode,
+                invOrg: fallbackInvOrg,
+                itemClass: null,
+                type,
+                status: 'Missing',
+                currentInv: 0,
+                weeklyHealth: [],
+                weeklyAvail: [],
+                missingInventory: true
+            };
+        }
 
         const firstRec = records[0];
         const itemCode = firstRec['Item Code'];
         const invOrg = firstRec['Inv Org'];
-        const itemClass = firstRec['Item Class']; 
+        const itemClass = firstRec['Item Class'];
 
         const validRecords = records.filter(d => 
             (!dateRange.start || d._dateObj >= new Date(dateRange.start)) &&
@@ -1016,7 +1050,8 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             status,
             currentInv,
             weeklyHealth,
-            weeklyAvail
+            weeklyAvail,
+            missingInventory: false
         };
     }, [dataIndex, dateRange]);
 
@@ -1622,7 +1657,7 @@ export default function SupplyChainDashboard() {
 
         const sortedDates = Array.from(uniqueDates).sort((a,b) => new Date(a) - new Date(b));
         const sortedMetrics = Array.from(uniqueMetrics).sort();
-        return { dates: sortedDates, metrics: sortedMetrics, values: valueMap };
+        return { dates: sortedDates, metrics: sortedMetrics, values: valueMap, hasData: itemsData.length > 0 };
     }, [selectedItem, rawData, dateRange]);
 
     const activeMetrics = useMemo(() => {
@@ -1922,37 +1957,45 @@ export default function SupplyChainDashboard() {
                             <button onClick={() => setIsDetailOpen(false)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-400'}`}><X className="w-5 h-5" /></button>
                         </div>
                         <div className="flex-1 overflow-auto p-0">
-                            <table className="w-full text-sm text-left border-collapse relative">
-                                <thead className={`text-xs uppercase sticky top-0 z-10 font-semibold tracking-wider backdrop-blur-sm ${isDarkMode ? 'bg-slate-900/90 text-slate-400' : 'bg-slate-50/90 text-slate-500'}`}>
-                                    <tr>
-                                        <th className={`px-6 py-3 border-b left-0 sticky z-20 border-r w-64 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'}`}>Metric</th>
-                                        {selectedItemData.dates.map(dateStr => (
-                                            <th key={dateStr} className={`px-3 py-3 border-b text-center min-w-[80px] transition-colors cursor-default ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-indigo-50/50'}`}>
-                                                <div className="flex flex-col"><span className="text-[10px] opacity-50">{new Date(dateStr).toLocaleString('default', { weekday: 'short' })}</span><span>{new Date(dateStr).getMonth() + 1}/{new Date(dateStr).getDate()}</span></div>
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100/10">
-                                    {selectedItemData.metrics.map(metric => (
-                                        <tr key={metric} className={`transition-colors group ${isDarkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/80'}`}>
-                                            <td className={`px-6 py-3 font-medium sticky left-0 border-r z-10 text-xs truncate max-w-[250px] ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 group-hover:bg-slate-800' : 'bg-white border-slate-100 text-slate-600 group-hover:bg-slate-50'}`} title={metric}>{metric}</td>
-                                            {selectedItemData.dates.map(dateStr => {
-                                                const val = selectedItemData.values[metric]?.[dateStr];
-                                                let cellClass = isDarkMode ? "text-slate-500" : "text-slate-400";
-
-                                                if (metric === 'Tot.Inventory (Forecast)') {
-                                                    const targetVal = selectedItemData.values['Tot.Target Inv.']?.[dateStr];
-                                                    cellClass = getInventoryColorClass(val, targetVal, isDarkMode);
-                                                } else if (val > 0) {
-                                                    cellClass = isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium";
-                                                }
-                                                return <td key={dateStr} className={`px-3 py-2 text-right border-r transition-colors font-mono text-xs ${cellClass} ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>{val !== undefined ? val.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</td>;
-                                            })}
+                            {selectedItemData.hasData ? (
+                                <table className="w-full text-sm text-left border-collapse relative">
+                                    <thead className={`text-xs uppercase sticky top-0 z-10 font-semibold tracking-wider backdrop-blur-sm ${isDarkMode ? 'bg-slate-900/90 text-slate-400' : 'bg-slate-50/90 text-slate-500'}`}>
+                                        <tr>
+                                            <th className={`px-6 py-3 border-b left-0 sticky z-20 border-r w-64 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'}`}>Metric</th>
+                                            {selectedItemData.dates.map(dateStr => (
+                                                <th key={dateStr} className={`px-3 py-3 border-b text-center min-w-[80px] transition-colors cursor-default ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-indigo-50/50'}`}>
+                                                    <div className="flex flex-col"><span className="text-[10px] opacity-50">{new Date(dateStr).toLocaleString('default', { weekday: 'short' })}</span><span>{new Date(dateStr).getMonth() + 1}/{new Date(dateStr).getDate()}</span></div>
+                                                </th>
+                                            ))}
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100/10">
+                                        {selectedItemData.metrics.map(metric => (
+                                            <tr key={metric} className={`transition-colors group ${isDarkMode ? 'hover:bg-slate-800/50' : 'hover:bg-slate-50/80'}`}>
+                                                <td className={`px-6 py-3 font-medium sticky left-0 border-r z-10 text-xs truncate max-w-[250px] ${isDarkMode ? 'bg-slate-900 border-slate-800 text-slate-300 group-hover:bg-slate-800' : 'bg-white border-slate-100 text-slate-600 group-hover:bg-slate-50'}`} title={metric}>{metric}</td>
+                                                {selectedItemData.dates.map(dateStr => {
+                                                    const val = selectedItemData.values[metric]?.[dateStr];
+                                                    let cellClass = isDarkMode ? "text-slate-500" : "text-slate-400";
+
+                                                    if (metric === 'Tot.Inventory (Forecast)') {
+                                                        const targetVal = selectedItemData.values['Tot.Target Inv.']?.[dateStr];
+                                                        cellClass = getInventoryColorClass(val, targetVal, isDarkMode);
+                                                    } else if (val > 0) {
+                                                        cellClass = isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium";
+                                                    }
+                                                    return <td key={dateStr} className={`px-3 py-2 text-right border-r transition-colors font-mono text-xs ${cellClass} ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`}>{val !== undefined ? val.toLocaleString(undefined, {maximumFractionDigits: 0}) : '-'}</td>;
+                                                })}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className={`h-full flex flex-col items-center justify-center text-center gap-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                    <AlertTriangle className="w-6 h-6 text-amber-500" />
+                                    <p className="text-sm font-semibold">Item not found in today&apos;s Planning Review data.</p>
+                                    <p className="text-xs opacity-70">Please check OMP for availability.</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
