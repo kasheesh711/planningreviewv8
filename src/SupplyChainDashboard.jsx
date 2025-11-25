@@ -343,7 +343,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                 ctx.moveTo(link.source.x, link.source.y);
                 ctx.lineTo(link.target.x, link.target.y);
                 if (isConnected) {
-                    ctx.strokeStyle = isDarkMode ? '#818cf8' : '#4f46e5'; // Indigo 400/600
+                    ctx.strokeStyle = isDarkMode ? '#38bdf8' : '#2563eb'; // Accent blue
                     ctx.globalAlpha = 0.8;
                     ctx.lineWidth = 2 / transform.k;
                 } else {
@@ -365,7 +365,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                     else if (ratio < 0.8) fill = '#f59e0b';
                     else fill = '#10b981';
                 } else {
-                    if (node.type === 'RM') fill = '#6366f1'; // Indigo
+                    if (node.type === 'RM') fill = '#0ea5e9'; // Sky
                     else if (node.type === 'FG') fill = '#10b981'; // Emerald
                     else fill = '#06b6d4'; // Cyan
                 }
@@ -506,7 +506,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
             <div className={`p-3 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
                  <div className="flex items-center gap-4">
                     <div className="flex items-center gap-2">
-                        <Network className="w-4 h-4 text-indigo-500" />
+                        <Network className="w-4 h-4 text-sky-500" />
                         <h3 className={`font-bold text-sm ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Network Brain</h3>
                     </div>
                     <div className={`h-4 w-px ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`} />
@@ -517,7 +517,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                         <input 
                             type="range" min="1" max="100" value={spacing} 
                             onChange={e => setSpacing(parseInt(e.target.value))}
-                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-sky-600"
                         />
                     </div>
 
@@ -526,7 +526,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                             type="checkbox" 
                             checked={hideOrphans} 
                             onChange={e => setHideOrphans(e.target.checked)} 
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                            className="rounded border-slate-300 text-sky-600 focus:ring-sky-500"
                         />
                         <span className={isDarkMode ? 'text-slate-400' : 'text-slate-600'}>Hide Orphans</span>
                     </label>
@@ -564,7 +564,7 @@ const NetworkGraphView = ({ rawData, bomData, isDarkMode, selectedNode }) => {
                 {/* Overlay Legend */}
                 <div className="absolute bottom-3 left-3 pointer-events-none flex gap-3">
                     <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur px-2 py-1 rounded text-[10px] text-white border border-white/10">
-                        <div className="w-2 h-2 rounded-full bg-indigo-500"></div>RM
+                        <div className="w-2 h-2 rounded-full bg-sky-500"></div>RM
                     </div>
                     <div className="flex items-center gap-1.5 bg-black/40 backdrop-blur px-2 py-1 rounded text-[10px] text-white border border-white/10">
                         <div className="w-2 h-2 rounded-full bg-emerald-500"></div>FG
@@ -650,10 +650,10 @@ const SearchableSelect = ({ label, value, options, onChange, multi = false, isDa
             <button
                 className={`w-full rounded-lg border px-3 py-2 text-xs flex items-center justify-between cursor-pointer transition-all duration-200 ease-in-out
                     ${isOpen 
-                        ? 'border-indigo-500 ring-1 ring-indigo-500/20 shadow-md' 
+                        ? 'border-sky-500 ring-1 ring-sky-500/20 shadow-md' 
                         : isDarkMode 
                             ? 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600' 
-                            : 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:shadow-sm'}`}
+                            : 'bg-white border-slate-200 text-slate-700 hover:border-sky-300 hover:shadow-sm'}`}
                 onClick={() => { if (!isOpen) setSearchTerm(""); setIsOpen(!isOpen); }}
             >
                 <span className="truncate block max-w-[140px] text-left font-medium">{getDisplayText()}</span>
@@ -667,7 +667,7 @@ const SearchableSelect = ({ label, value, options, onChange, multi = false, isDa
                             <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 opacity-50" />
                             <input
                                 type="text"
-                                className={`w-full pl-7 pr-2 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700'}`}
+                                className={`w-full pl-7 pr-2 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 ${isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-200' : 'bg-white border-slate-200 text-slate-700'}`}
                                 placeholder="Search..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -683,7 +683,7 @@ const SearchableSelect = ({ label, value, options, onChange, multi = false, isDa
                                     key={opt}
                                     className={`px-3 py-2 text-xs cursor-pointer flex items-center justify-between transition-colors
                                         ${value === opt || (multi && value.includes(opt)) 
-                                            ? 'bg-indigo-500/10 text-indigo-600 font-semibold' 
+                                            ? 'bg-sky-500/10 text-sky-600 font-semibold' 
                                             : isDarkMode ? 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
                                     onClick={(e) => {
                                         if (multi) { e.stopPropagation(); handleMultiSelect(opt); } 
@@ -693,7 +693,7 @@ const SearchableSelect = ({ label, value, options, onChange, multi = false, isDa
                                     <span className="truncate">{opt}</span>
                                     {multi && (
                                         (value.includes(opt))
-                                            ? <CheckSquare className="w-3 h-3 text-indigo-500" />
+                                            ? <CheckSquare className="w-3 h-3 text-sky-500" />
                                             : <Square className="w-3 h-3 opacity-30" />
                                     )}
                                 </div>
@@ -753,11 +753,11 @@ const WeeklyAvailIndicator = React.memo(({ data, isDarkMode }) => {
 const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMode }) => {
     const baseClasses = isDarkMode 
         ? "bg-slate-800/50 border-slate-700 hover:bg-slate-800 hover:border-slate-600" 
-        : "bg-white border-slate-200 hover:border-indigo-200 hover:shadow-md";
+        : "bg-white border-slate-200 hover:border-sky-200 hover:shadow-md";
     
     const activeClasses = isDarkMode
-        ? "ring-1 ring-indigo-500 bg-indigo-900/20 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]"
-        : "ring-2 ring-indigo-500 border-transparent shadow-lg";
+        ? "ring-1 ring-sky-500 bg-sky-900/20 border-sky-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]"
+        : "ring-2 ring-sky-500 border-transparent shadow-lg";
 
     return (
         <div 
@@ -768,7 +768,7 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
             <div className="flex justify-between items-start mb-1.5">
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border 
-                        ${isActive ? 'bg-indigo-500 text-white border-transparent' : isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
+                        ${isActive ? 'bg-sky-500 text-white border-transparent' : isDarkMode ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`}>
                         {node.type}
                     </span>
                     <div className="flex flex-col min-w-0">
@@ -781,7 +781,7 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
                 </div>
                 <button 
                     onClick={(e) => { e.stopPropagation(); onOpenDetail(node); }}
-                    className={`p-1.5 rounded-lg transition-colors z-10 relative ${isDarkMode ? 'hover:bg-slate-700 text-slate-500 hover:text-indigo-400' : 'hover:bg-indigo-50 text-slate-400 hover:text-indigo-600'}`}
+                    className={`p-1.5 rounded-lg transition-colors z-10 relative ${isDarkMode ? 'hover:bg-slate-700 text-slate-500 hover:text-sky-400' : 'hover:bg-sky-50 text-slate-400 hover:text-sky-600'}`}
                     title="View Details"
                 >
                     <Table className="w-3.5 h-3.5" />
@@ -802,7 +802,7 @@ const NodeCard = React.memo(({ node, onSelect, isActive, onOpenDetail, isDarkMod
 });
 
 const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSearchTerm, setSort, sortValue, isActiveCol, isDarkMode, children }) => (
-    <div className={`flex flex-col h-full min-h-0 border-r ${isDarkMode ? 'border-slate-800 bg-slate-900/20' : 'border-slate-200/60 bg-slate-50/30'} ${isActiveCol ? (isDarkMode ? 'bg-indigo-900/10' : 'bg-indigo-50/30') : ''} min-w-[300px] flex-1`}>
+    <div className={`flex flex-col h-full min-h-0 border-r ${isDarkMode ? 'border-slate-800 bg-slate-900/20' : 'border-slate-200/60 bg-slate-50/30'} ${isActiveCol ? (isDarkMode ? 'bg-sky-900/10' : 'bg-sky-50/30') : ''} min-w-[300px] flex-1`}>
         <div className={`p-4 border-b backdrop-blur-sm sticky top-0 z-10 ${isDarkMode ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200/60 bg-white/80'}`}>
             <div className="flex items-center justify-between mb-3">
                 <h3 className={`text-xs font-bold uppercase tracking-widest flex items-center gap-2 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -810,15 +810,15 @@ const RenderColumn = React.memo(({ title, count, items, type, searchTerm, setSea
                     {title} <span className={`px-1.5 py-0.5 rounded text-[10px] ${isDarkMode ? 'bg-slate-800 text-slate-300' : 'bg-slate-200 text-slate-700'}`}>{count}</span>
                 </h3>
                 <div className="flex gap-1">
-                    <button onClick={() => setSort('alpha')} className={`p-1.5 rounded transition-colors ${sortValue === 'alpha' ? (isDarkMode ? 'bg-slate-800 text-indigo-400' : 'bg-white shadow-sm text-indigo-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Alpha"><ArrowUpDown className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => setSort('invAsc')} className={`p-1.5 rounded transition-colors ${sortValue === 'invAsc' ? (isDarkMode ? 'bg-slate-800 text-indigo-400' : 'bg-white shadow-sm text-indigo-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Inv (Low-to-High)"><Activity className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setSort('alpha')} className={`p-1.5 rounded transition-colors ${sortValue === 'alpha' ? (isDarkMode ? 'bg-slate-800 text-sky-400' : 'bg-white shadow-sm text-sky-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Alpha"><ArrowUpDown className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => setSort('invAsc')} className={`p-1.5 rounded transition-colors ${sortValue === 'invAsc' ? (isDarkMode ? 'bg-slate-800 text-sky-400' : 'bg-white shadow-sm text-sky-600') : 'opacity-40 hover:opacity-100'}`} title="Sort Inv (Low-to-High)"><Activity className="w-3.5 h-3.5" /></button>
                 </div>
             </div>
             <div className="relative mb-3">
                 <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 opacity-40" />
                 <input 
                     type="text" 
-                    className={`w-full pl-8 pr-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors
+                    className={`w-full pl-8 pr-3 py-2 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-sky-500 transition-colors
                         ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-200 placeholder-slate-600' : 'bg-white border-slate-200 text-slate-700 placeholder-slate-400'}`}
                     placeholder="Filter items..."
                     value={searchTerm}
@@ -1116,8 +1116,8 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
                             onClick={() => setFilters(prev => ({...prev, rmClass: cls}))}
                             className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
                                 ${filters.rmClass === cls 
-                                    ? 'bg-indigo-500 border-indigo-500 text-white shadow-md shadow-indigo-500/30' 
-                                    : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                                    ? 'bg-sky-500 border-sky-500 text-white shadow-md shadow-sky-500/30' 
+                                    : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-sky-300'}`}
                         >
                             {cls}
                         </button>
@@ -1147,7 +1147,7 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
                                 className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
                                     ${filters.fgPlant === org 
                                         ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/30' 
-                                        : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                                        : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-sky-300'}`}
                             >
                                 {org}
                             </button>
@@ -1177,7 +1177,7 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
                             className={`text-[9px] font-bold px-2.5 py-1 rounded-full border transition-all whitespace-nowrap uppercase tracking-wide
                                 ${filters.dcOrg === org 
                                     ? 'bg-blue-500 border-blue-500 text-white shadow-md shadow-blue-500/30' 
-                                    : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300'}`}
+                                    : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500' : 'bg-white border-slate-200 text-slate-500 hover:border-sky-300'}`}
                         >
                             {org}
                         </button>
@@ -1618,7 +1618,7 @@ export default function SupplyChainDashboard() {
         return filters.metric;
     }, [filteredData, filters.metric]);
 
-    const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+    const colors = ['#2563eb', '#0ea5e9', '#14b8a6', '#22d3ee', '#f59e0b', '#ef4444', '#0f172a', '#84cc16'];
 
     const resetFilters = () => {
         setIsLeadTimeMode(false);
@@ -1676,16 +1676,16 @@ export default function SupplyChainDashboard() {
              <header className={`sticky top-0 z-40 backdrop-blur-md border-b transition-colors duration-300 ${isDarkMode ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200/60'}`}>
                 <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                        <div className="bg-indigo-600 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
+                        <div className="bg-sky-600 p-2 rounded-xl shadow-lg shadow-sky-500/20">
                             <Package className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h1 className={`text-lg font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Supply Chain <span className="text-indigo-500">Center</span></h1>
+                            <h1 className={`text-lg font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Supply Chain <span className="text-sky-500">Center</span></h1>
                             <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Inventory Intelligence</p>
                         </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                        <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-xl border transition-all ${isDarkMode ? 'bg-slate-800 border-slate-700 text-yellow-400 hover:text-yellow-300' : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600'}`}>
+                        <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2 rounded-xl border transition-all ${isDarkMode ? 'bg-slate-800 border-slate-700 text-yellow-400 hover:text-yellow-300' : 'bg-white border-slate-200 text-slate-400 hover:text-sky-600'}`}>
                             {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                         </button>
                         <div className={`h-6 w-px ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}></div>
@@ -1697,7 +1697,7 @@ export default function SupplyChainDashboard() {
                             <FileSpreadsheet className="w-3.5 h-3.5 mr-2 text-emerald-500" />Import BOM<input type="file" accept=".csv" onChange={handleBomUpload} className="hidden" />
                         </label>
                         <label className={`group flex items-center px-3 py-2 border rounded-xl cursor-pointer transition-all text-xs font-medium ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700 text-slate-300' : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-600'}`}>
-                            <Upload className="w-3.5 h-3.5 mr-2 text-indigo-500" />Import CSV<input type="file" accept=".csv" onChange={handleInventoryUpload} className="hidden" />
+                            <Upload className="w-3.5 h-3.5 mr-2 text-sky-500" />Import CSV<input type="file" accept=".csv" onChange={handleInventoryUpload} className="hidden" />
                         </label>
                     </div>
                 </div>
@@ -1709,23 +1709,23 @@ export default function SupplyChainDashboard() {
                     <button 
                         onClick={() => setActiveView('dashboard')}
                         className={`p-3 rounded-xl transition-all group relative ${activeView === 'dashboard' 
-                            ? (isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600') 
+                            ? (isDarkMode ? 'bg-sky-500/20 text-sky-400' : 'bg-sky-50 text-sky-600') 
                             : (isDarkMode ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-300' : 'text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-600')}`}
                         title="Dashboard View"
                     >
                         <LayoutDashboard className="w-5 h-5" />
-                        {activeView === 'dashboard' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full" />}
+                        {activeView === 'dashboard' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-sky-500 rounded-r-full" />}
                     </button>
                     
                     <button 
                         onClick={() => setActiveView('network')}
                         className={`p-3 rounded-xl transition-all group relative ${activeView === 'network' 
-                            ? (isDarkMode ? 'bg-indigo-500/20 text-indigo-400' : 'bg-indigo-50 text-indigo-600') 
+                            ? (isDarkMode ? 'bg-sky-500/20 text-sky-400' : 'bg-sky-50 text-sky-600') 
                             : (isDarkMode ? 'text-slate-500 hover:bg-slate-800 hover:text-slate-300' : 'text-slate-400 hover:bg-white hover:shadow-sm hover:text-slate-600')}`}
                         title="Network Graph Analysis"
                     >
                         <Share2 className="w-5 h-5" />
-                        {activeView === 'network' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-indigo-500 rounded-r-full" />}
+                        {activeView === 'network' && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-sky-500 rounded-r-full" />}
                     </button>
                 </div>
 
@@ -1738,13 +1738,13 @@ export default function SupplyChainDashboard() {
                             <div className={`h-[600px] shrink-0 rounded-2xl shadow-sm border p-0 overflow-hidden flex flex-col transition-all duration-300 ${isDarkMode ? 'bg-slate-900 border-slate-800 shadow-black/20' : 'bg-white border-slate-200/60 shadow-slate-200/50'}`}>
                                 <div className={`p-4 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-slate-50/50'}`}>
                                     <div className="flex items-center space-x-3">
-                                        <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500"><Network className="w-5 h-5" /></div>
+                                        <div className="p-2 rounded-lg bg-sky-500/10 text-sky-500"><Network className="w-5 h-5" /></div>
                                         <div><h2 className={`text-base font-bold tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Supply Chain Network</h2><p className="text-xs text-slate-500">Live Inventory Map</p></div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button 
                                             onClick={() => setShowFG(!showFG)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-sky-300 hover:text-sky-600'}`}
                                             title={showFG ? "Hide Plant Column" : "Show Plant Column"}
                                         >
                                             {showFG ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -1752,7 +1752,7 @@ export default function SupplyChainDashboard() {
                                         </button>
                                         <button 
                                             onClick={() => mapRef.current?.reset()}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'}`}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border rounded-lg shadow-sm transition-all ${isDarkMode ? 'bg-slate-800/90 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white/95 border-slate-300 text-slate-600 hover:border-sky-300 hover:text-sky-600'}`}
                                         >
                                             <RotateCcw className="w-3.5 h-3.5" /> Reset
                                         </button>
@@ -1807,9 +1807,9 @@ export default function SupplyChainDashboard() {
                                         ganttData.map((row, idx) => (
                                             <div key={idx} className={`flex items-center border-b h-12 group transition-all duration-200 
                                                 ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-50 hover:bg-slate-50'}
-                                                ${selectedItem && selectedItem.itemCode === row.itemCode && selectedItem.invOrg === row.invOrg ? (isDarkMode ? 'bg-indigo-900/30' : 'bg-indigo-50/60') : ''}`}>
+                                                ${selectedItem && selectedItem.itemCode === row.itemCode && selectedItem.invOrg === row.invOrg ? (isDarkMode ? 'bg-sky-900/30' : 'bg-sky-50/60') : ''}`}>
                                                 <div className={`flex-shrink-0 px-6 py-2 border-r truncate cursor-pointer h-full flex flex-col justify-center ${isDarkMode ? 'border-slate-800' : 'border-slate-50'}`} style={{ width: Y_AXIS_WIDTH }} onClick={() => setSelectedItem({ itemCode: row.itemCode, invOrg: row.invOrg })}>
-                                                    <div className={`font-bold text-sm truncate transition-colors ${isDarkMode ? 'text-slate-300 group-hover:text-indigo-400' : 'text-slate-700 group-hover:text-indigo-600'}`}>{row.itemCode}</div>
+                                                    <div className={`font-bold text-sm truncate transition-colors ${isDarkMode ? 'text-slate-300 group-hover:text-sky-400' : 'text-slate-700 group-hover:text-sky-600'}`}>{row.itemCode}</div>
                                                     <div className="text-xs text-slate-500 font-mono mt-0.5">{row.invOrg}</div>
                                                 </div>
                                                 <div className="flex-1 relative h-full cursor-pointer" style={{ marginLeft: '20px', marginRight: '30px' }} onClick={() => setSelectedItem({ itemCode: row.itemCode, invOrg: row.invOrg })}>
@@ -1819,9 +1819,16 @@ export default function SupplyChainDashboard() {
                                                     {row.blocks.map((block, bIdx) => {
                                                         const style = getGanttStyles(block.start, block.end);
                                                         const isCritical = block.status === 'Critical';
-                                                        const colorClass = isCritical ? 'bg-red-500' : 'bg-amber-500';
+                                                        const colorClass = isCritical
+                                                            ? 'from-rose-500 to-rose-400 ring-1 ring-rose-400/50 shadow-rose-500/20'
+                                                            : 'from-amber-400 to-amber-300 ring-1 ring-amber-400/50 shadow-amber-500/10';
                                                         return (
-                                                            <div key={bIdx} className={`absolute h-4 top-4 rounded-sm shadow-sm cursor-pointer hover:scale-y-110 transition-transform ${colorClass}`} style={{...style, minWidth: '8px'}} title={`${block.status}: ${block.days} Days`}></div>
+                                                            <div
+                                                                key={bIdx}
+                                                                className={`absolute h-4 top-3 rounded-full shadow-md bg-gradient-to-r cursor-pointer hover:scale-[1.02] hover:shadow-lg transition-transform duration-150 ${colorClass}`}
+                                                                style={{...style, minWidth: '10px'}}
+                                                                title={`${block.status}: ${block.days} Days`}
+                                                            ></div>
                                                         );
                                                     })}
                                                 </div>
@@ -1868,13 +1875,13 @@ export default function SupplyChainDashboard() {
                     <div className="p-5 flex-1 flex flex-col gap-6">
                         <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 flex items-center gap-2"><Filter className="w-3 h-3" /> Filters</h3>
-                            <button onClick={resetFilters} className="text-[10px] text-indigo-500 hover:text-indigo-400 font-medium uppercase tracking-wider">Reset All</button>
+                            <button onClick={resetFilters} className="text-[10px] text-sky-500 hover:text-sky-400 font-medium uppercase tracking-wider">Reset All</button>
                         </div>
                         
                         <div className="space-y-5">
                             <div>
                                 <label className={`block text-[9px] font-bold uppercase mb-1.5 tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Analysis Mode</label>
-                                <button onClick={() => setIsLeadTimeMode(!isLeadTimeMode)} className={`flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-all ${isLeadTimeMode ? 'bg-indigo-500/10 border-indigo-500/50 text-indigo-500' : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>
+                                <button onClick={() => setIsLeadTimeMode(!isLeadTimeMode)} className={`flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-all ${isLeadTimeMode ? 'bg-sky-500/10 border-sky-500/50 text-sky-500' : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}>
                                     <span className="text-xs font-medium flex items-center"><Clock className="w-3.5 h-3.5 mr-2" />Lead Time Only</span>
                                     {isLeadTimeMode ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4 opacity-50" />}
                                 </button>
@@ -1883,8 +1890,8 @@ export default function SupplyChainDashboard() {
                             <div>
                                 <label className={`block text-[9px] font-bold uppercase mb-1.5 tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Date Range</label>
                                 <div className="flex flex-col gap-2.5">
-                                    <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
-                                    <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
+                                    <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-sky-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
+                                    <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-sky-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
                                 </div>
                             </div>
 
@@ -1904,7 +1911,7 @@ export default function SupplyChainDashboard() {
                     <div className={`fixed inset-x-0 bottom-0 z-50 backdrop-blur-xl border-t shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.2)] transform transition-all duration-300 ease-in-out h-96 flex flex-col animate-in slide-in-from-bottom-10 ${isDarkMode ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200'}`}>
                         <div className={`px-6 py-4 border-b flex items-center justify-between ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white/50 border-slate-100'}`}>
                             <div className="flex items-center space-x-4">
-                                <div className="bg-indigo-500/10 p-2 rounded-lg"><Table className="w-5 h-5 text-indigo-500" /></div>
+                                <div className="bg-sky-500/10 p-2 rounded-lg"><Table className="w-5 h-5 text-sky-500" /></div>
                                 <div><h3 className={`font-bold text-lg tracking-tight ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>{selectedItem.itemCode}</h3><p className="text-xs text-slate-500 font-medium font-mono uppercase tracking-wider">{selectedItem.invOrg} — Detail View</p></div>
                             </div>
                             <button onClick={() => setIsDetailOpen(false)} className={`p-2 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-400'}`}><X className="w-5 h-5" /></button>
@@ -1915,7 +1922,7 @@ export default function SupplyChainDashboard() {
                                     <tr>
                                         <th className={`px-6 py-3 border-b left-0 sticky z-20 border-r w-64 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-slate-50'}`}>Metric</th>
                                         {selectedItemData.dates.map(dateStr => (
-                                            <th key={dateStr} className={`px-3 py-3 border-b text-center min-w-[80px] transition-colors cursor-default ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-indigo-50/50'}`}>
+                                            <th key={dateStr} className={`px-3 py-3 border-b text-center min-w-[80px] transition-colors cursor-default ${isDarkMode ? 'border-slate-800 hover:bg-slate-800' : 'border-slate-200 hover:bg-sky-50/50'}`}>
                                                 <div className="flex flex-col"><span className="text-[10px] opacity-50">{new Date(dateStr).toLocaleString('default', { weekday: 'short' })}</span><span>{new Date(dateStr).getMonth() + 1}/{new Date(dateStr).getDate()}</span></div>
                                             </th>
                                         ))}
