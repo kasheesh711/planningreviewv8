@@ -64,17 +64,17 @@ const getLeadTimeWeeks = (invOrg) => {
 };
 
 const getInventoryColorClass = (val, targetVal, isDarkMode) => {
-    if (val === undefined || val === null || Number.isNaN(val)) return isDarkMode ? "text-slate-500" : "text-slate-400";
+    if (val === undefined || val === null || Number.isNaN(val)) return isDarkMode ? "text-slate-500" : "text-slate-500";
     if (!targetVal) return val < 0
-        ? "text-red-500 font-bold bg-red-500/10"
-        : (isDarkMode ? "text-slate-300 font-medium" : "text-slate-700 font-medium");
+        ? "text-red-400 font-bold bg-red-600/25"
+        : (isDarkMode ? "text-slate-200 font-semibold" : "text-slate-800 font-semibold");
 
     const ratio = (val / targetVal) * 100;
-    if (ratio > 120) return isDarkMode ? "text-blue-300 font-semibold bg-blue-500/10" : "text-blue-600 font-semibold bg-blue-50";
-    if (ratio >= 80) return isDarkMode ? "text-emerald-300 font-semibold bg-emerald-500/10" : "text-emerald-600 font-semibold bg-emerald-50";
-    if (ratio >= 30) return isDarkMode ? "text-amber-200 font-semibold bg-amber-500/10" : "text-amber-600 font-semibold bg-amber-50";
-    if (ratio > 0) return isDarkMode ? "text-orange-200 font-semibold bg-orange-500/10" : "text-orange-600 font-semibold bg-orange-50";
-    return "text-red-500 font-bold bg-red-500/10";
+    if (ratio > 120) return isDarkMode ? "text-sky-100 font-extrabold bg-sky-500/30" : "text-sky-800 font-semibold bg-sky-100";
+    if (ratio >= 80) return isDarkMode ? "text-emerald-100 font-extrabold bg-emerald-500/30" : "text-emerald-800 font-semibold bg-emerald-100";
+    if (ratio >= 30) return isDarkMode ? "text-amber-100 font-bold bg-amber-500/30" : "text-amber-800 font-semibold bg-amber-100";
+    if (ratio > 0) return isDarkMode ? "text-orange-100 font-bold bg-orange-500/30" : "text-orange-800 font-semibold bg-orange-100";
+    return "text-red-400 font-bold bg-red-600/25";
 };
 
 // --- Sample Data ---
@@ -884,17 +884,17 @@ const SupplyChainMap = forwardRef(({ filters, setFilters, selectedItemFromParent
             let type = 'FG';
             if (PLANT_ORGS.includes(selectedItemFromParent.invOrg)) type = 'FG';
             else if (DC_ORGS.includes(selectedItemFromParent.invOrg)) type = 'DC';
-            else type = 'RM'; 
+            else type = 'RM';
 
-            if (!mapFocus || mapFocus.id !== selectedItemFromParent.itemCode) {
-                setMapFocus({ 
+            if (!mapFocus || mapFocus.id !== selectedItemFromParent.itemCode || mapFocus.invOrg !== selectedItemFromParent.invOrg) {
+                setMapFocus({
                     type: type,
-                    id: selectedItemFromParent.itemCode, 
-                    invOrg: selectedItemFromParent.invOrg 
+                    id: selectedItemFromParent.itemCode,
+                    invOrg: selectedItemFromParent.invOrg
                 });
             }
         }
-    }, [selectedItemFromParent, inventoryData]);
+    }, [selectedItemFromParent, inventoryData, mapFocus]);
 
     // 1. Index Data
     const dataIndex = useMemo(() => {
