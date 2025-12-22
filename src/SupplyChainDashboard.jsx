@@ -1199,7 +1199,8 @@ export default function SupplyChainDashboard() {
         itemClass: 'All',
         uom: 'All',
         strategy: 'All',
-        metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] 
+        metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'],
+        inventoryBelowTarget: false 
     });
     
     const [listFilters, setListFilters] = useState({
@@ -1415,6 +1416,43 @@ export default function SupplyChainDashboard() {
         reader.readAsText(file);
     };
 
+    const inventoryCoverageByDate = useMemo(() => {
+        const coverageMap = new Map();
+        rawData.forEach(item => {
+            if (!item.Date) return;
+            const key = `${item['Item Code']}|${item['Inv Org']}|${item.Date}`;
+            const entry = coverageMap.get(key) || { inventory: 0, target: 0 };
+            if (item.Metric === 'Tot.Inventory (Forecast)') entry.inventory += item.Value || 0;
+            if (item.Metric === 'Tot.Target Inv.') entry.target += item.Value || 0;
+            coverageMap.set(key, entry);
+        });
+        return coverageMap;
+    }, [rawData]);
+
+    const lowInventoryKeys = useMemo(() => {
+        const startDate = dateRange.start ? new Date(dateRange.start) : null;
+        const endDate = dateRange.end ? new Date(dateRange.end) : null;
+        const keys = new Set();
+
+        inventoryCoverageByDate.forEach((entry, key) => {
+            const [itemCode, invOrg, dateStr] = key.split('|');
+            const dateObj = new Date(dateStr);
+            if (startDate && dateObj < startDate) return;
+            if (endDate && dateObj > endDate) return;
+            if (!entry.target) return;
+            if (entry.inventory <= 0.8 * entry.target) {
+                keys.add(`${itemCode}|${invOrg}`);
+            }
+        });
+
+        return keys;
+    }, [inventoryCoverageByDate, dateRange]);
+
+    const mapInventoryData = useMemo(() => {
+        if (!filters.inventoryBelowTarget) return rawData;
+        return rawData.filter(item => lowInventoryKeys.has(`${item['Item Code']}|${item['Inv Org']}`));
+    }, [filters.inventoryBelowTarget, lowInventoryKeys, rawData]);
+
     const options = useMemo(() => {
         const getFilteredDataForField = (excludeKey) => {
             return rawData.filter(item => {
@@ -1475,7 +1513,7 @@ export default function SupplyChainDashboard() {
 
         const grouped = {};
         const chartFiltered = sourceData.filter(item => 
-             filters.metric.includes('All') || filters.metric.includes(item.Metric)
+             (filters.metric.includes('All') || filters.metric.includes(item.Metric))
         );
 
         chartFiltered.forEach(item => {
@@ -1622,7 +1660,7 @@ export default function SupplyChainDashboard() {
 
     const resetFilters = () => {
         setIsLeadTimeMode(false);
-        setFilters({ itemCode: 'All', invOrg: 'All', itemClass: 'All', uom: 'All', strategy: 'All', metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] });
+        setFilters({ itemCode: 'All', invOrg: 'All', itemClass: 'All', uom: 'All', strategy: 'All', metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'], inventoryBelowTarget: false });
         setRiskFilters({ critical: true, watchOut: true, minDays: 1 });
         setSelectedItem(null);
         setIsDetailOpen(false);
@@ -1765,7 +1803,7 @@ export default function SupplyChainDashboard() {
                                         setFilters={setListFilters}
                                         selectedItemFromParent={selectedItem} 
                                         bomData={bomData} 
-                                        inventoryData={rawData} 
+                                        inventoryData={mapInventoryData} 
                                         dateRange={dateRange} 
                                         onOpenDetails={onOpenDetailsCallback}
                                         onNodeSelect={onNodeSelectCallback}
@@ -1886,6 +1924,17 @@ export default function SupplyChainDashboard() {
                                     <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
                                     <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className={`block text-[9px] font-bold uppercase mb-1.5 tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Inventory Coverage</label>
+                                <button
+                                    onClick={() => setFilters(prev => ({ ...prev, inventoryBelowTarget: !prev.inventoryBelowTarget }))}
+                                    className={`flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-all ${filters.inventoryBelowTarget ? 'bg-amber-500/10 border-amber-500/60 text-amber-600' : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}
+                                >
+                                    <span className="text-xs font-medium flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-2" />Forecast ≤ 80% Target</span>
+                                    {filters.inventoryBelowTarget ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4 opacity-50" />}
+                                </button>
                             </div>
 
                             <SearchableSelect label="Item Code" value={filters.itemCode} options={options.itemCodes} onChange={(val) => setFilters(prev => ({ ...prev, itemCode: val }))} isDarkMode={isDarkMode} />
