@@ -1199,7 +1199,8 @@ export default function SupplyChainDashboard() {
         itemClass: 'All',
         uom: 'All',
         strategy: 'All',
-        metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] 
+        metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'],
+        inventoryBelowTarget: false 
     });
     
     const [listFilters, setListFilters] = useState({
@@ -1415,6 +1416,27 @@ export default function SupplyChainDashboard() {
         reader.readAsText(file);
     };
 
+    const inventoryCoverageByDate = useMemo(() => {
+        const coverageMap = new Map();
+        rawData.forEach(item => {
+            if (!item.Date) return;
+            const key = `${item['Item Code']}|${item['Inv Org']}|${item.Date}`;
+            const entry = coverageMap.get(key) || { inventory: 0, target: 0 };
+            if (item.Metric === 'Tot.Inventory (Forecast)') entry.inventory += item.Value || 0;
+            if (item.Metric === 'Tot.Target Inv.') entry.target += item.Value || 0;
+            coverageMap.set(key, entry);
+        });
+        return coverageMap;
+    }, [rawData]);
+
+    const matchesInventoryThreshold = useCallback((item) => {
+        if (!filters.inventoryBelowTarget) return true;
+        const coverage = inventoryCoverageByDate.get(`${item['Item Code']}|${item['Inv Org']}|${item.Date}`);
+        if (!coverage || coverage.target === undefined || coverage.target === null || coverage.target === 0) return false;
+        const ratio = coverage.inventory / coverage.target;
+        return ratio <= 0.8;
+    }, [filters.inventoryBelowTarget, inventoryCoverageByDate]);
+
     const options = useMemo(() => {
         const getFilteredDataForField = (excludeKey) => {
             return rawData.filter(item => {
@@ -1423,6 +1445,7 @@ export default function SupplyChainDashboard() {
                 const endDate = dateRange.end ? new Date(dateRange.end) : null;
                 const inDateRange = (!startDate || itemDate >= startDate) && (!endDate || itemDate <= endDate);
                 if (!inDateRange) return false;
+                if (!matchesInventoryThreshold(item)) return false;
                 return (
                     inDateRange &&
                     (excludeKey === 'itemCode' || filters.itemCode === 'All' || item['Item Code'] === filters.itemCode) &&
@@ -1442,7 +1465,7 @@ export default function SupplyChainDashboard() {
             strategies: getUnique(getFilteredDataForField('strategy'), 'Strategy'),
             metrics: getUnique(getFilteredDataForField('metric'), 'Metric'),
         };
-    }, [rawData, filters, dateRange]);
+    }, [rawData, filters, dateRange, matchesInventoryThreshold]);
 
     const filteredData = useMemo(() => {
         return rawData.filter(item => {
@@ -1453,6 +1476,7 @@ export default function SupplyChainDashboard() {
             
             return (
                 inDateRange &&
+                matchesInventoryThreshold(item) &&
                 (filters.itemCode === 'All' || item['Item Code'] === filters.itemCode) &&
                 (filters.invOrg === 'All' || item['Inv Org'] === filters.invOrg) &&
                 (filters.itemClass === 'All' || item['Item Class'] === filters.itemClass) &&
@@ -1460,7 +1484,7 @@ export default function SupplyChainDashboard() {
                 (filters.strategy === 'All' || item['Strategy'] === filters.strategy)
             );
         });
-    }, [rawData, filters, dateRange]);
+    }, [rawData, filters, dateRange, matchesInventoryThreshold]);
 
     const chartData = useMemo(() => {
         let sourceData = filteredData;
@@ -1475,7 +1499,8 @@ export default function SupplyChainDashboard() {
 
         const grouped = {};
         const chartFiltered = sourceData.filter(item => 
-             filters.metric.includes('All') || filters.metric.includes(item.Metric)
+             (filters.metric.includes('All') || filters.metric.includes(item.Metric)) &&
+             matchesInventoryThreshold(item)
         );
 
         chartFiltered.forEach(item => {
@@ -1488,7 +1513,7 @@ export default function SupplyChainDashboard() {
             grouped[item.Date][item.Metric] += (item.Value || 0);
         });
         return Object.values(grouped).sort((a, b) => a._dateObj - b._dateObj);
-    }, [filteredData, filters.metric, selectedItem, rawData, dateRange]);
+    }, [filteredData, filters.metric, selectedItem, rawData, dateRange, matchesInventoryThreshold]);
 
     const ganttData = useMemo(() => {
         const grouped = {};
@@ -1587,6 +1612,7 @@ export default function SupplyChainDashboard() {
              const itemDate = d._dateObj;
              if (startDate && itemDate < startDate) return;
              if (endDate && itemDate > endDate) return;
+             if (!matchesInventoryThreshold(d)) return;
              uniqueDates.add(d.Date);
              const metric = d.Metric.trim();
              uniqueMetrics.add(metric);
@@ -1597,7 +1623,7 @@ export default function SupplyChainDashboard() {
         const sortedDates = Array.from(uniqueDates).sort((a,b) => new Date(a) - new Date(b));
         const sortedMetrics = Array.from(uniqueMetrics).sort();
         return { dates: sortedDates, metrics: sortedMetrics, values: valueMap };
-    }, [selectedItem, rawData, dateRange]);
+    }, [selectedItem, rawData, dateRange, matchesInventoryThreshold]);
 
     const getInventoryCellClass = (val, targetVal) => {
         if (val === undefined || val === null || Number.isNaN(val)) return isDarkMode ? "text-slate-500" : "text-slate-400";
@@ -1622,7 +1648,7 @@ export default function SupplyChainDashboard() {
 
     const resetFilters = () => {
         setIsLeadTimeMode(false);
-        setFilters({ itemCode: 'All', invOrg: 'All', itemClass: 'All', uom: 'All', strategy: 'All', metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'] });
+        setFilters({ itemCode: 'All', invOrg: 'All', itemClass: 'All', uom: 'All', strategy: 'All', metric: ['Tot.Target Inv.', 'Tot.Inventory (Forecast)'], inventoryBelowTarget: false });
         setRiskFilters({ critical: true, watchOut: true, minDays: 1 });
         setSelectedItem(null);
         setIsDetailOpen(false);
@@ -1886,6 +1912,17 @@ export default function SupplyChainDashboard() {
                                     <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.start} onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))} />
                                     <input type="date" disabled={isLeadTimeMode} className={`w-full px-3 py-2 border rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none ${isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'}`} value={dateRange.end} onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))} />
                                 </div>
+                            </div>
+
+                            <div>
+                                <label className={`block text-[9px] font-bold uppercase mb-1.5 tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>Inventory Coverage</label>
+                                <button
+                                    onClick={() => setFilters(prev => ({ ...prev, inventoryBelowTarget: !prev.inventoryBelowTarget }))}
+                                    className={`flex items-center justify-between w-full px-3 py-2 rounded-lg border transition-all ${filters.inventoryBelowTarget ? 'bg-amber-500/10 border-amber-500/60 text-amber-600' : isDarkMode ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-200 text-slate-600'}`}
+                                >
+                                    <span className="text-xs font-medium flex items-center"><AlertTriangle className="w-3.5 h-3.5 mr-2" />Forecast ≤ 80% Target</span>
+                                    {filters.inventoryBelowTarget ? <ToggleRight className="w-4 h-4" /> : <ToggleLeft className="w-4 h-4 opacity-50" />}
+                                </button>
                             </div>
 
                             <SearchableSelect label="Item Code" value={filters.itemCode} options={options.itemCodes} onChange={(val) => setFilters(prev => ({ ...prev, itemCode: val }))} isDarkMode={isDarkMode} />
