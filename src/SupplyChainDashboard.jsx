@@ -1429,13 +1429,29 @@ export default function SupplyChainDashboard() {
         return coverageMap;
     }, [rawData]);
 
-    const matchesInventoryThreshold = useCallback((item) => {
-        if (!filters.inventoryBelowTarget) return true;
-        const coverage = inventoryCoverageByDate.get(`${item['Item Code']}|${item['Inv Org']}|${item.Date}`);
-        if (!coverage || coverage.target === undefined || coverage.target === null || coverage.target === 0) return false;
-        const ratio = coverage.inventory / coverage.target;
-        return ratio <= 0.8;
-    }, [filters.inventoryBelowTarget, inventoryCoverageByDate]);
+    const lowInventoryKeys = useMemo(() => {
+        const startDate = dateRange.start ? new Date(dateRange.start) : null;
+        const endDate = dateRange.end ? new Date(dateRange.end) : null;
+        const keys = new Set();
+
+        inventoryCoverageByDate.forEach((entry, key) => {
+            const [itemCode, invOrg, dateStr] = key.split('|');
+            const dateObj = new Date(dateStr);
+            if (startDate && dateObj < startDate) return;
+            if (endDate && dateObj > endDate) return;
+            if (!entry.target) return;
+            if (entry.inventory <= 0.8 * entry.target) {
+                keys.add(`${itemCode}|${invOrg}`);
+            }
+        });
+
+        return keys;
+    }, [inventoryCoverageByDate, dateRange]);
+
+    const mapInventoryData = useMemo(() => {
+        if (!filters.inventoryBelowTarget) return rawData;
+        return rawData.filter(item => lowInventoryKeys.has(`${item['Item Code']}|${item['Inv Org']}`));
+    }, [filters.inventoryBelowTarget, lowInventoryKeys, rawData]);
 
     const options = useMemo(() => {
         const getFilteredDataForField = (excludeKey) => {
@@ -1445,7 +1461,6 @@ export default function SupplyChainDashboard() {
                 const endDate = dateRange.end ? new Date(dateRange.end) : null;
                 const inDateRange = (!startDate || itemDate >= startDate) && (!endDate || itemDate <= endDate);
                 if (!inDateRange) return false;
-                if (!matchesInventoryThreshold(item)) return false;
                 return (
                     inDateRange &&
                     (excludeKey === 'itemCode' || filters.itemCode === 'All' || item['Item Code'] === filters.itemCode) &&
@@ -1465,7 +1480,7 @@ export default function SupplyChainDashboard() {
             strategies: getUnique(getFilteredDataForField('strategy'), 'Strategy'),
             metrics: getUnique(getFilteredDataForField('metric'), 'Metric'),
         };
-    }, [rawData, filters, dateRange, matchesInventoryThreshold]);
+    }, [rawData, filters, dateRange]);
 
     const filteredData = useMemo(() => {
         return rawData.filter(item => {
@@ -1476,7 +1491,6 @@ export default function SupplyChainDashboard() {
             
             return (
                 inDateRange &&
-                matchesInventoryThreshold(item) &&
                 (filters.itemCode === 'All' || item['Item Code'] === filters.itemCode) &&
                 (filters.invOrg === 'All' || item['Inv Org'] === filters.invOrg) &&
                 (filters.itemClass === 'All' || item['Item Class'] === filters.itemClass) &&
@@ -1484,7 +1498,7 @@ export default function SupplyChainDashboard() {
                 (filters.strategy === 'All' || item['Strategy'] === filters.strategy)
             );
         });
-    }, [rawData, filters, dateRange, matchesInventoryThreshold]);
+    }, [rawData, filters, dateRange]);
 
     const chartData = useMemo(() => {
         let sourceData = filteredData;
@@ -1499,8 +1513,7 @@ export default function SupplyChainDashboard() {
 
         const grouped = {};
         const chartFiltered = sourceData.filter(item => 
-             (filters.metric.includes('All') || filters.metric.includes(item.Metric)) &&
-             matchesInventoryThreshold(item)
+             (filters.metric.includes('All') || filters.metric.includes(item.Metric))
         );
 
         chartFiltered.forEach(item => {
@@ -1513,7 +1526,7 @@ export default function SupplyChainDashboard() {
             grouped[item.Date][item.Metric] += (item.Value || 0);
         });
         return Object.values(grouped).sort((a, b) => a._dateObj - b._dateObj);
-    }, [filteredData, filters.metric, selectedItem, rawData, dateRange, matchesInventoryThreshold]);
+    }, [filteredData, filters.metric, selectedItem, rawData, dateRange]);
 
     const ganttData = useMemo(() => {
         const grouped = {};
@@ -1612,7 +1625,6 @@ export default function SupplyChainDashboard() {
              const itemDate = d._dateObj;
              if (startDate && itemDate < startDate) return;
              if (endDate && itemDate > endDate) return;
-             if (!matchesInventoryThreshold(d)) return;
              uniqueDates.add(d.Date);
              const metric = d.Metric.trim();
              uniqueMetrics.add(metric);
@@ -1623,7 +1635,7 @@ export default function SupplyChainDashboard() {
         const sortedDates = Array.from(uniqueDates).sort((a,b) => new Date(a) - new Date(b));
         const sortedMetrics = Array.from(uniqueMetrics).sort();
         return { dates: sortedDates, metrics: sortedMetrics, values: valueMap };
-    }, [selectedItem, rawData, dateRange, matchesInventoryThreshold]);
+    }, [selectedItem, rawData, dateRange]);
 
     const getInventoryCellClass = (val, targetVal) => {
         if (val === undefined || val === null || Number.isNaN(val)) return isDarkMode ? "text-slate-500" : "text-slate-400";
@@ -1791,7 +1803,7 @@ export default function SupplyChainDashboard() {
                                         setFilters={setListFilters}
                                         selectedItemFromParent={selectedItem} 
                                         bomData={bomData} 
-                                        inventoryData={rawData} 
+                                        inventoryData={mapInventoryData} 
                                         dateRange={dateRange} 
                                         onOpenDetails={onOpenDetailsCallback}
                                         onNodeSelect={onNodeSelectCallback}
